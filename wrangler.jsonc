@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "namenice",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ROOT_DOMAIN": "namenice.net",
+    "CNAME_TARGET": "fallback.blognice.com"
+  },
+  "routes": [
+    { "pattern": "namenice.net/*", "zone_name": "namenice.net" },
+    { "pattern": "*.namenice.net/*", "zone_name": "namenice.net" }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "namenice", "database_id": "your-namenice-id" },
+    { "binding": "POSTS", "database_name": "namenice-posts", "database_id": "your-namenice-posts-id" }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "namenice-media" }],
+  "analytics_engine_datasets": [
+    { "binding": "METRICS", "dataset": "namenice_pageviews" },
+    { "binding": "EVENTS", "dataset": "namenice_events" }
+  ],
+  "ai": { "binding": "AI" }
+}
