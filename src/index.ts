@@ -182,9 +182,11 @@ app.get("/signout", async (c) => {
 });
 
 app.get("/billing", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
-  const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
+  const expBilling = user?.email ? await requireExplicitOrg(c, user.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(expBilling as any).ok) return (expBilling as any).response;
+  const orgId = (expBilling as any).orgId as number;
+  const member = await requireOrgMember(c, orgId);
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
@@ -238,15 +240,20 @@ app.post("/billing/portal", async (c) => {
 });
 
 app.get("/settings", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
-  const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
+  const expSettings = user?.email ? await requireExplicitOrg(c, user.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(expSettings as any).ok) return (expSettings as any).response;
+  const orgId = (expSettings as any).orgId as number;
+  const member = await requireOrgMember(c, orgId);
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const org = await c.env.DB.prepare("SELECT is_company, title FROM organizations WHERE id=?").bind(orgId).first().catch(()=>null) as any;
   const isCompanyFlag = !!org?.is_company;
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
   const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
-  const companyToggle = isPersonal
+  const canManageMembers = can(member.role, "members.manage");
+  const companyToggle = !canManageMembers
+    ? `<p class=muted style=font-size:.9rem>Only owners can upgrade/invite — your role <b>${esc(member.role)}</b> is read-only for members.</p>`
+    : isPersonal
     ? `<form method=post action="/settings/company?org=${orgId}"><label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=company value=1> Company — upgrade this Personal Organization to a Company Organization</label> <button class=btn type=submit>Upgrade to Company →</button></form><p class=muted style=font-size:.85rem>In-place upgrade: Domains and balance stay on this org (no move). Needed to invite members.</p>`
     : `<div class=card style="border-left:4px solid #111"><b>Company Organization</b><p class=muted style=font-size:.9rem>Upgrade complete — members and invites enabled. Domains/balance unchanged on org ${orgId}.</p></div><div class=card><h3 style=margin:0>Invite member</h3><form method=post action="/settings/members/invite?org=${orgId}" style="display:grid;gap:.5rem;max-width:420px"><label>Email <input name=email type=email required placeholder="colleague@company.com"></label><label>Role <select name=role><option value=viewer selected>viewer — read only</option><option value=billing>billing — money only</option><option value=admin>admin — domains + DNS</option><option value=owner>owner — all</option></select></label><button class=btn type=submit>Invite →</button></form><p class=muted style=font-size:.82rem>Invites live 7 days (token_hash) — invitee accepts via POST /invite/accept with token. Personal Organization stays solo.</p></div><div class=card><h3 style=margin:0>Accept invite</h3><form method=post action="/invite/accept" style="display:flex;gap:.5rem"><input name=token placeholder="paste invite token" required style="flex:1"><button class=btn type=submit>Accept →</button></form></div>`;
   return c.html(shell("Settings — Namenice", `<div class=card><h3 style=margin:0>Settings — ${esc(org?.title||`org ${orgId}`)}</h3><div class=muted style=font-size:.9rem>Type: ${isPersonal ? "Personal Organization (solo — treated as you)" : "Company Organization"}</div>${companyToggle}<p style="margin-top:.8rem"><a href="/billing?org=${orgId}">Billing →</a> · <a href="/domains?org=${orgId}">Domains →</a></p></div>`, { user, orgId }));
@@ -325,9 +332,11 @@ app.post("/invite/accept", async (c) => {
 });
 
 app.get("/domains", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
-  const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
+  const expDomains = user?.email ? await requireExplicitOrg(c, user.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(expDomains as any).ok) return (expDomains as any).response;
+  const orgId = (expDomains as any).orgId as number;
+  const member = await requireOrgMember(c, orgId);
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
