@@ -6,43 +6,6 @@ import { getOrgBalance, debitBalance, creditTopup } from "../src/balance.ts";
 const balSrc = readFileSync(new URL("../src/balance.ts", import.meta.url), "utf8");
 const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
 
-function mockDB() {
-  const orgBalances = new Map(); // org_id -> cents
-  const ledger = new Map(); // idempotency_key -> row
-  const makeStmt = (sql) => {
-    let bound = [];
-    return {
-      bind(...args) { bound = args; return this; },
-      async first() {
-        if (sql.includes("SELECT balance_cents FROM org_balances")) {
-          const orgId = bound[0];
-          return orgBalances.has(orgId) ? { balance_cents: orgBalances.get(orgId) } : null;
-        }
-        if (sql.includes("SELECT id FROM balance_ledger")) {
-          const key = bound[0];
-          return ledger.has(key) ? { id: 1 } : null;
-        }
-        return null;
-      },
-      async run() { return { meta: { changes: 1 } }; },
-    };
-  };
-  return {
-    _org: orgBalances, _ledger: ledger,
-    prepare(sql) { return makeStmt(sql); },
-    async batch(stmts) {
-      // simulate batch execution with simple logic
-      const metas = [];
-      for (const s of stmts) {
-        // we need to inspect SQL string - but we lost it. Hack: use bound length to infer
-        metas.push({ meta: { changes: 1 } });
-      }
-      // actually implement via direct state mutations called explicitly in test wrappers
-      return metas;
-    }
-  };
-}
-
 // Real D1Mock with proper SQL dispatch — simpler: use Miniflare-like stub that actually mutates via batch parsing
 function createRealMock() {
   const orgBalances = new Map();
