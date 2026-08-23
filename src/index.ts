@@ -131,7 +131,7 @@ function shell(title: string, body: string, opts?: { user?: { email:string } | n
   const nav = user
     ? `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn style="background:#fff;color:#111" href="/domains?org=${org}">Domains</a><a class=btn style="background:#fff;color:#111" href="/billing?org=${org}">Billing</a><a class=btn style="background:#fff;color:#111" href="/audit?org=${org}">Audit</a><span class=muted style="align-self:center;font-size:.85rem">${esc(user.email)}</span><a class=btn style="background:#fff;color:#111" href="/signout">Sign out</a>`
     : `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn href="/signin">Sign in</a><a class=btn style="background:#fff;color:#111" href="/signin">Create account</a>`;
-  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem} .card{border:1px solid #e6e6e6;border-radius:12px;padding:1rem;margin:.8rem 0;background:#fafaf9} .btn{padding:.6rem 1rem;border-radius:999px;background:#111;color:#fff;border:1px solid #111} .muted{color:#6b6b6b} table{width:100%;border-collapse:collapse} th{color:#6b6b6b;text-align:left;border-bottom:1px solid #e6e6e6;padding:.4rem} td{padding:.5rem .3rem;border-bottom:1px solid #f0f0f0} input,select{padding:.6rem;border:1px solid #e6e6e6;border-radius:8px} .badge{font-size:.75rem;padding:.2rem .5rem;border-radius:999px;background:#1a8917;color:#fff}</style></head><body><h1 style="letter-spacing:-.03em">name<span style="color:#1a8917">nice</span> <span class=muted style="font-weight:400;font-size:.9rem">· modern DNS + domains</span></h1><nav style="display:flex;gap:.6rem;margin:.6rem 0;flex-wrap:wrap;align-items:center">${nav}</nav>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem} .card{border:1px solid #e6e6e6;border-radius:12px;padding:1rem;margin:.8rem 0;background:#fafaf9} .btn{padding:.6rem 1rem;border-radius:999px;background:#111;color:#fff;border:1px solid #111} .muted{color:#6b6b6b} table{width:100%;border-collapse:collapse} th{color:#6b6b6b;text-align:left;border-bottom:1px solid #e6e6e6;padding:.4rem} td{padding:.5rem .3rem;border-bottom:1px solid #f0f0f0} input,select{padding:.6rem;border:1px solid #e6e6e6;border-radius:8px} .badge{font-size:.75rem;padding:.2rem .5rem;border-radius:999px;background:#1a8917;color:#fff}</style></head><body><h1 style="letter-spacing:-.03em">name<span style="color:#1a8917">nice</span> <span class=muted style="font-weight:400;font-size:.9rem">· modern DNS + domains</span></h1><nav style="display:flex;gap:.6rem;margin:.6rem 0;flex-wrap:wrap;align-items:center">${nav}</nav>${body}</body></html>`;
 }
 
 function signinPage(): string {
@@ -153,6 +153,18 @@ app.get("/", async (c) => {
 app.get("/signin", (c) => c.html(shell("Sign in — Namenice", signinPage())));
 app.get("/sign-in", (c) => c.html(shell("Sign in — Namenice", signinPage())));
 app.get("/login", (c) => c.redirect("/signin", 302));
+
+app.get("/sitemap.xml", (c) => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://www.namenice.net/</loc><changefreq>daily</changefreq><priority>1.0</priority></url></urlset>`;
+  c.header("Content-Type", "application/xml");
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.body(xml, 200);
+});
+
+app.get("/favicon.ico", (c) => {
+  c.header("Cache-Control", "public, max-age=86400");
+  return c.redirect("https://www.namenice.net/", 302);
+});
 
 app.on(["GET","POST"], "/api/auth/*", async (c) => {
   try {
@@ -282,7 +294,8 @@ app.post("/settings/members/invite", async (c) => {
     if (msg.includes("no such table") || msg.includes("token_hash")) throw e;
   });
   try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"org.invite.create", target:`${email} ${role}`, actor: member.email }); } catch {}
-  return c.html(shell("Invite created", `<div class=card><p>Invite for <b>${esc(email)}</b> as <b>${esc(role)}</b> created — 7-day token (keep safe):</p><pre style="padding:.6rem;background:#f5f5f5;border-radius:8px;overflow:auto">${esc(token)}</pre><p class=muted style=font-size:.85rem>Share this token with the invitee to accept at <code>POST /invite/accept</code>. Stored as token_hash.</p><p><a href="/settings?org=${orgId}">← Settings</a></p></div>`));
+  c.header("Cache-Control", "no-store, no-cache");
+  return c.redirect(`/settings?org=${orgId}`, 303);
 });
 
 app.post("/invite/accept", async (c) => {
@@ -307,6 +320,7 @@ app.post("/invite/accept", async (c) => {
   await c.env.DB.prepare("INSERT OR IGNORE INTO organization_members (account_id, org_id, role, created_at) VALUES (?, ?, ?, ?)").bind(acc.id, inv.org_id, inv.role, now).run().catch(()=>{});
   await c.env.DB.prepare("UPDATE organization_invitations SET accepted_at=? WHERE token_hash=?").bind(now, token_hash).run().catch(()=>{});
   try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, inv.org_id, { action:"org.invite.accept", target:`${inv.email} ${inv.role}`, actor: user.email }); } catch {}
+  c.header("Cache-Control", "no-store, no-cache");
   return c.redirect(`/domains?org=${inv.org_id}`, 303);
 });
 
