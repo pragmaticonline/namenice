@@ -168,3 +168,14 @@ CREATE TABLE verification (
   createdAt INTEGER,
   updatedAt INTEGER
 );
+CREATE TABLE domain_forwards (
+  id INTEGER PRIMARY KEY,
+  org_id INTEGER NOT NULL,
+  domain TEXT NOT NULL,
+  host TEXT NOT NULL DEFAULT '@',
+  target TEXT NOT NULL,
+  code INTEGER NOT NULL DEFAULT 301,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_forwards_org_domain ON domain_forwards(org_id, domain);

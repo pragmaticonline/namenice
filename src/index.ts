@@ -231,7 +231,10 @@ app.get("/domains/:domain/dns", async (c) => {
   if (!exists) return c.html(shell("Not found", `<div class=card><p>Domain ${domain} not in org ${orgId}. <a href="/domains?org=${orgId}">← Back</a></p></div>`), 404);
   const records = await listDns(c.env as any, orgId, domain);
   const rows = records.map((r:any)=>`<tr><td><b>${r.host}</b></td><td>${r.type}</td><td style="word-break:break-all">${r.value}</td><td>${r.ttl}</td><td>${r.priority ?? "—"}</td><td><form method=post action="/domains/${encodeURIComponent(domain)}/dns/remove?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Remove</button></form></td></tr>`).join("") || `<tr><td colspan=6 class=muted>No records. Add one below. Default: we prefill @ A for fallback.</td></tr>`;
-  return c.html(shell(`DNS — ${domain}`, `<div class=card><h3 style=margin:0>DNS — ${domain} <span class=muted style=font-weight:400>· org ${orgId}</span></h3><table><thead><tr><th>Host</th><th>Type</th><th>Value</th><th>TTL</th><th>Prio</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Add record</h3><form method=post action="/domains/${encodeURIComponent(domain)}/dns/add?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:end"><label>Host <input name=host placeholder="@" value="@" required></label><label>Type <select name=type>${DNS_TYPES.map(t=>`<option>${t}</option>`).join("")}</select></label><label>Value <input name=value placeholder="1.2.3.4 or target" required style="min-width:240px"></label><label>TTL <input name=ttl type=number value=3600 min=60 max=86400 style="width:90px"></label><label>Prio <input name=priority type=number placeholder="10" style="width:70px"></label><button class=btn>Add</button></form><div class=muted style="font-size:.82rem;margin-top:.4rem">Examples: <code>@ A 76.76.21.21</code> · <code>www CNAME ${domain}</code> · <code>@ MX mail.example.com (prio 10)</code> · <code>@ TXT v=spf1 include:_spf.example.com ~all</code></div></div><div class=card><h3 style=margin:0>Nameservers</h3><p class=muted style="font-size:.85rem">We host DNS at Namenice. If domain is at Dynadot, set NS to <code>ns1.namenice.net / ns2.namenice.net</code> or keep Dynadot DNS and we sync via API.</p><form method=post action="/domains/${encodeURIComponent(domain)}/ns?org=${orgId}" style="display:flex;gap:.5rem"><input name=ns placeholder="ns1.namenice.net, ns2.namenice.net" style="flex:1"><button class=btn style="background:#fff;color:#111">Update NS</button></form></div>`));
+  return c.html(shell(`DNS — ${domain}`, `<div class=card><h3 style=margin:0>DNS — ${domain} <span class=muted style=font-weight:400>· org ${orgId}</span></h3><table><thead><tr><th>Host</th><th>Type</th><th>Value</th><th>TTL</th><th>Prio</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Add record</h3><form method=post action="/domains/${encodeURIComponent(domain)}/dns/add?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:end"><label>Host <input name=host placeholder="@" value="@" required></label><label>Type <select name=type>${DNS_TYPES.map(t=>`<option>${t}</option>`).join("")}</select></label><label>Value <input name=value placeholder="1.2.3.4 or target" required style="min-width:240px"></label><label>TTL <input name=ttl type=number value=3600 min=60 max=86400 style="width:90px"></label><label>Prio <input name=priority type=number placeholder="10" style="width:70px"></label><button class=btn>Add</button></form><div class=muted style="font-size:.82rem;margin-top:.4rem">Examples: <code>@ A 76.76.21.21</code> · <code>www CNAME ${domain}</code> · <code>@ MX mail.example.com (prio 10)</code> · <code>@ TXT v=spf1 include:_spf.example.com ~all</code></div></div><div class=card><h3 style=margin:0>Import zone file</h3><form method=post action="/domains/${encodeURIComponent(domain)}/dns/import?org=${orgId}"><textarea name=zone placeholder="; BIND zone&#10;@ 3600 IN A 76.76.21.21&#10;www 3600 IN CNAME @" rows=4 style="width:100%;padding:.6rem;border:1px solid #e6e6e6;border-radius:8px"></textarea><button class=btn style="margin-top:.4rem">Import →</button></form><p class=muted style="font-size:.82rem">Bulk: paste BIND. For CSV bulk use API.</p></div>
+<div class=card><h3 style=margin:0>URL forwarding</h3><form method=post action="/domains/${encodeURIComponent(domain)}/forward?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=host placeholder="@" value="@" style="width:80px"><input name=target placeholder="https://example.com" style="flex:1" required><select name=code><option value=301>301</option><option value=302>302</option></select><button class=btn>Forward →</button></form><p class=muted style="font-size:.82rem">Edge 301/302 via Worker. Vanity NS: set to <code>ns1.namenice.net / ns2.namenice.net</code> + enable DNSSEC below.</p></div>
+<div class=card><h3 style=margin:0>DNSSEC</h3><p class=muted style="font-size:.85rem">DS/DNSKEY — coming soon. We’ll publish <code>DNSKEY</code> and you add <code>DS</code> at registrar. Audit: <code>dns.dnssec.enable</code></p><form method=post action="/domains/${encodeURIComponent(domain)}/dns?org=${orgId}" onsubmit="return false"><button class=btn style="background:#fff;color:#111" disabled>Enable DNSSEC (soon)</button></form></div>
+<div class=card><h3 style=margin:0>Nameservers</h3><p class=muted style="font-size:.85rem">We host DNS at Namenice. If domain is at Dynadot, set NS to <code>ns1.namenice.net / ns2.namenice.net</code> or keep Dynadot DNS and we sync via API.</p><form method=post action="/domains/${encodeURIComponent(domain)}/ns?org=${orgId}" style="display:flex;gap:.5rem"><input name=ns placeholder="ns1.namenice.net, ns2.namenice.net" style="flex:1"><button class=btn style="background:#fff;color:#111">Update NS</button></form></div>`));
 });
 
 app.post("/domains/:domain/dns/add", async (c) => {
@@ -255,6 +258,41 @@ app.post("/domains/:domain/dns/remove", async (c) => {
   await removeDns(c.env as any, orgId, domain, Number(form.get("id"))).catch(()=>{});
   try { recordAuditEvent(c.env as any, orgId, { action:"dns.remove", target:domain, actor:member.email }); } catch {}
   return c.redirect(`/domains/${encodeURIComponent(domain)}/dns?org=${orgId}`, 303);
+});
+app.post("/domains/:domain/dns/import", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const domain = c.req.param("domain").toLowerCase();
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "dns.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  const zone = String(form.get("zone")||"").slice(0,20000);
+  let added=0;
+  for (const line of zone.split("\n")) {
+    const s=line.trim(); if(!s||s.startsWith(";")||s.startsWith("$")) continue;
+    const parts=s.split(/\s+/); if(parts.length<4) continue;
+    const host=parts[0].replace(domain,"").replace(".", "")||"@";
+    const ttl = Number(parts[1])||3600;
+    const type = parts[2].toUpperCase();
+    const value = parts.slice(3).join(" ");
+    if (!["A","AAAA","CNAME","MX","TXT","NS","SRV","CAA"].includes(type)) continue;
+    try { const { addDns } = await import("./dns.ts"); await addDns(c.env as any, orgId, domain, { host, type, value, ttl }); added++; } catch {}
+  }
+  return c.html(shell("Zone imported", `<div class=card><p>Imported ${added} records for ${domain}.</p><a href="/domains/${encodeURIComponent(domain)}/dns?org=${orgId}">← DNS</a></div>`));
+});
+app.post("/domains/:domain/forward", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const domain = c.req.param("domain").toLowerCase();
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "dns.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  const host = String(form.get("host")||"@").trim().slice(0,253) || "@";
+  const target = String(form.get("target")||"").trim().slice(0,500);
+  const code = Number(form.get("code")||301);
+  if (!target) return c.text("target required",400);
+  const now = Math.floor(Date.now()/1000);
+  await c.env.DB.prepare("INSERT INTO domain_forwards (org_id, domain, host, target, code, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(orgId, domain, host, target, code, now).run().catch(()=>{});
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"forward.add", target:`${host}.${domain} → ${target}`, actor: member.email }); } catch {}
+  return c.redirect(`/domains/${encodeURIComponent(domain)}/dns?org=${orgId}`,303);
 });
 app.post("/domains/:domain/ns", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
