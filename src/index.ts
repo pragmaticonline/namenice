@@ -592,7 +592,10 @@ app.post("/domains/renew", async (c) => {
   return c.text("Use Stripe renew endpoint", 400);
 });
 app.post("/domains/renew-stripe", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _uR = await getSessionUser(c);
+  const _eR = _uR?.email ? await requireExplicitOrg(c, _uR.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(_eR as any).ok) return (_eR as any).response;
+  const orgId = (_eR as any).orgId as number;
   const member = await requireOrgMember(c, orgId);
   if (!member) return c.text("forbidden", 403);
   if (!stripeConfigured(c.env as any)) return c.text("Stripe not configured", 503);
@@ -606,11 +609,17 @@ app.post("/domains/renew-stripe", async (c) => {
 });
 
 app.get("/transfer", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _uT = await getSessionUser(c);
+  const _eT = _uT?.email ? await requireExplicitOrg(c, _uT.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(_eT as any).ok) return (_eT as any).response;
+  const orgId = (_eT as any).orgId as number;
   return c.html(shell("Transfer — Namenice", `<div class=card><h3>Transfer in</h3><form method=post action="/domains/transfer/in?org=${orgId}" style="display:grid;gap:.6rem;max-width:520px"><label>Domain <input name=domain required placeholder="example.com"></label><label>Auth code <input name=auth_code required placeholder="X1Y2-..."></label><button class=btn>Start transfer — $14.99</button></form><p class=muted style="font-size:.82rem">Unlock at old registrar first. Transfers take 5-7 days. We debit from balance or Stripe like buy.</p></div><div class=card><h3>Transfer out / Auth code</h3><form method=post action="/domains/transfer/out?org=${orgId}" style="display:flex;gap:.5rem"><input name=domain placeholder="mydomain.com" required><button class=btn style="background:#fff;color:#111">Request auth code</button></form></div><div class=card><h3>Bulk</h3><form method=post action="/domains/bulk/renew?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=domains placeholder="a.com, b.com" style="flex:1"><button class=btn>Bulk renew 1y from balance</button></form></div>`));
 });
 app.post("/domains/transfer/in", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _uTi = await getSessionUser(c);
+  const _eTi = _uTi?.email ? await requireExplicitOrg(c, _uTi.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(_eTi as any).ok) return (_eTi as any).response;
+  const orgId = (_eTi as any).orgId as number;
   const member = await requireOrgMember(c, orgId);
   if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
   const form = await c.req.formData();
@@ -621,7 +630,10 @@ app.post("/domains/transfer/in", async (c) => {
   return c.html(shell("Transfer started", `<div class=card><p>Transfer for <b>${esc(domain)}</b> initiated (auth ${auth.slice(0,4)}***). Check email at losing registrar to approve. <span class=muted>Sandbox: simulated.</span></p><a href="/domains?org=${orgId}">← Domains</a></div>`));
 });
 app.post("/domains/transfer/out", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _uTo = await getSessionUser(c);
+  const _eTo = _uTo?.email ? await requireExplicitOrg(c, _uTo.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(_eTo as any).ok) return (_eTo as any).response;
+  const orgId = (_eTo as any).orgId as number;
   const member = await requireOrgMember(c, orgId);
   if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
   const form = await c.req.formData();
@@ -630,14 +642,17 @@ app.post("/domains/transfer/out", async (c) => {
   return c.html(shell("Auth code", `<div class=card><p>Auth code for <b>${esc(domain)}</b> sent to registrant email. Unlock the domain first if locked.</p><a href="/domains?org=${orgId}">← Domains</a></div>`));
 });
 app.post("/domains/bulk/renew", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _uB = await getSessionUser(c);
+  const _eB = _uB?.email ? await requireExplicitOrg(c, _uB.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(_eB as any).ok) return (_eB as any).response;
+  const orgId = (_eB as any).orgId as number;
   const member = await requireOrgMember(c, orgId);
   if (!member || !can(member.role, "billing.manage")) return c.text("forbidden",403);
   const form = await c.req.formData();
   const list = String(form.get("domains")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   let ok=0, fail=0;
   for (const dom of list) {
-    const r = await (await import("./balance.ts")).debitBalance(c.env as any, orgId, member.accountId, 1499, { idempotencyKey:`bulk:renew:${orgId}:${dom}:${Date.now()}`, description:`Bulk renew ${dom}`, domain: dom });
+    const r = await (await import("./balance.ts")).debitBalance(c.env as any, orgId, member.accountId, 1499, { idempotencyKey:`bulk:renew:${orgId}:${dom}:${Math.floor(Date.now()/86400000)}`, description:`Bulk renew ${dom}`, domain: dom });
     if (r.ok) { ok++; await c.env.DB.prepare("UPDATE domains SET expires_at=COALESCE(expires_at, strftime('%s','now'))+365*86400 WHERE org_id=? AND domain=?").bind(orgId, dom).run().catch(()=>{}); } else fail++;
   }
   return c.html(shell("Bulk renew", `<div class=card><p>Renewed ${ok} domains, ${fail} failed (insufficient balance).</p><a href="/domains?org=${orgId}">← Domains</a></div>`));
