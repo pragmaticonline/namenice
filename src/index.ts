@@ -25,17 +25,6 @@ type Bindings = MetricsEnv & BalanceEnv & {
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
-app.use("*", async (c, next) => {
-  const host = c.req.header("host") || new URL(c.req.url).host;
-  if (host === "namenice.net") {
-    const url = new URL(c.req.url);
-    url.hostname = "www.namenice.net";
-    url.protocol = "https:";
-    return c.redirect(url.toString(), 301);
-  }
-  await next();
-}); // apex redirect @ -> www (CNAME flattening alternative)
-
 
 async function requireOrgMember(c: any, orgId: number): Promise<{ accountId:number; email:string; role:string } | null> {
   const authHeader = c.req.header("x-namenice-account");
