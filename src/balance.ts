@@ -18,7 +18,7 @@ export async function debitBalance(env: BalanceEnv, orgId: number, accountId: nu
   const batch = await env.DB.batch([
     env.DB.prepare("INSERT OR IGNORE INTO org_balances (org_id, balance_cents, updated_at) VALUES (?,0,?)").bind(orgId, now),
     env.DB.prepare("UPDATE org_balances SET balance_cents = balance_cents - ?, updated_at=? WHERE org_id=? AND balance_cents >= ?").bind(amountCents, now, orgId, amountCents),
-    env.DB.prepare("INSERT INTO balance_ledger (org_id, account_id, type, amount_cents, balance_after, description, domain, idempotency_key, created_at) VALUES (?, ?, 'debit', ?, (SELECT balance_cents FROM org_balances WHERE org_id=?), ?, ?, ?, ?)").bind(orgId, accountId, -amountCents, orgId, opts.description, opts.domain||null, opts.idempotencyKey, now),
+    env.DB.prepare("INSERT OR IGNORE INTO balance_ledger (org_id, account_id, type, amount_cents, balance_after, description, domain, idempotency_key, created_at) VALUES (?, ?, 'debit', ?, (SELECT balance_cents FROM org_balances WHERE org_id=?), ?, ?, ?, ?)").bind(orgId, accountId, -amountCents, orgId, opts.description, opts.domain||null, opts.idempotencyKey, now),
   ]);
   if (batch[1].meta.changes !== 1) return { ok:false, error:"Balance changed — please retry." };
   const after = await getOrgBalance(env, orgId);
