@@ -40,3 +40,20 @@ test("company-upgrade: billing/domains flip to Organization when is_company or m
   assert.match(indexSrc, /memberCount|COUNT\(\*\)/);
   assert.match(indexSrc, /isPersonal|is_company/);
 });
+
+test("org-explicit-money: helper enforces explicit org when account has multiple orgs", () => {
+  assert.match(indexSrc, /explicit.*org|getUserOrgIds|requireExplicitOrg/i);
+  assert.match(indexSrc, /SELECT org_id FROM organization_members/);
+});
+
+test("org-explicit-money: POST /billing/topup requires explicit org", () => {
+  assert.match(indexSrc, /app\.post\("\/billing\/topup"/);
+  // should check for multiple orgs before debit
+  assert.match(indexSrc, /400.*explicit|explicit.*400/i);
+});
+
+test("org-explicit-money: POST /domains/buy and renew require explicit org", () => {
+  assert.match(indexSrc, /app\.post\("\/domains\/buy"/);
+  assert.match(indexSrc, /app\.post\("\/domains\/renew"/);
+  assert.match(indexSrc, /explicit.*org/i);
+});

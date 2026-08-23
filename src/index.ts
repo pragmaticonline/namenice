@@ -66,6 +66,26 @@ async function isCompanyOrg(env: any, orgId: number): Promise<boolean> {
   return false;
 }
 
+async function getUserOrgIds(env: any, email: string): Promise<number[]> {
+  try {
+    const rows = await env.DB.prepare("SELECT org_id FROM organization_members WHERE account_id=(SELECT id FROM accounts WHERE email=?)").bind(email).all().catch(()=>({results:[]})) as any;
+    return (rows.results||[]).map((r:any)=>r.org_id as number);
+  } catch { return []; }
+}
+
+async function requireExplicitOrg(c: any, email: string): Promise<{ orgId: number; ok: true } | { ok: false; response: Response }> {
+  const raw = c.req.query("org");
+  const hasExplicit = raw != null && String(raw).trim() !== "";
+  let orgId = hasExplicit ? Number(raw) : 1;
+  if (!email) return { orgId, ok: true } as any;
+  const ids = await getUserOrgIds(c.env as any, email);
+  if (ids.length > 1 && !hasExplicit) return { ok: false, response: c.text("explicit org required — select ?org=", 400) } as any;
+  if (hasExplicit && ids.length && !ids.includes(orgId)) return { ok: false, response: c.text("forbidden — org not yours", 403) } as any;
+  if (!hasExplicit && ids.length === 1 && ids[0] !== orgId) orgId = ids[0];
+  if (!Number.isFinite(orgId) || orgId < 1) return { ok: false, response: c.text("invalid org", 400) } as any;
+  return { orgId, ok: true } as any;
+}
+
 app.use("*", async (c, next) => {
   const host = (c.req.header("host") || new URL(c.req.url).host).split(":")[0];
   if (host === "namenice.net") {
@@ -168,7 +188,10 @@ app.get("/billing", async (c) => {
 });
 
 app.post("/billing/topup", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _userForOrg = await getSessionUser(c);
+  const _expTop = await requireExplicitOrg(c, _userForOrg?.email || "");
+  if (!_expTop.ok) return _expTop.response;
+  const orgId = _expTop.orgId;
   const member = await requireOrgMember(c, orgId);
   if (!member) return c.redirect("/signin", 302);
   if (!can(member.role, "billing.manage")) return c.text("forbidden", 403);
@@ -307,7 +330,10 @@ app.post("/domains/link", async (c) => {
 });
 
 app.post("/domains/buy", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _userBuy = await getSessionUser(c);
+  const _expBuy = await requireExplicitOrg(c, _userBuy?.email || "");
+  if (!_expBuy.ok) return _expBuy.response;
+  const orgId = _expBuy.orgId;
   const member = await requireOrgMember(c, orgId);
   if (!member || !can(member.role, "domains.manage")) return c.text("forbidden", 403);
   const form = await c.req.formData();
@@ -454,7 +480,10 @@ app.post("/domains/:domain/ns", async (c) => {
 });
 
 app.post("/domains/renew", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _userRenew = await getSessionUser(c);
+  const _expRenew = await requireExplicitOrg(c, _userRenew?.email || "");
+  if (!_expRenew.ok) return _expRenew.response;
+  const orgId = _expRenew.orgId;
   const member = await requireOrgMember(c, orgId);
   if (!member || !can(member.role, "billing.manage")) return c.text("forbidden", 403);
   const form = await c.req.formData();
