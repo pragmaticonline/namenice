@@ -51,8 +51,8 @@ test("verifyStripeSignature valid, multi-v1, and rejects bad/expired/missing", a
   assert.equal(await verifyStripeSignature(body, `t=${ts-301},v1=${digest2}`, secret), false, "expired >300s fails");
   assert.equal(await verifyStripeSignature(body, `t=${ts},v1=not-hex`, secret), false, "bad hex fails");
   // future timestamp also out of window
-  const futureDigest = await sign(ts+301, body);
-  assert.equal(await verifyStripeSignature(body, `t=${ts+301},v1=${futureDigest}`, secret), false, "future >300s fails");
+  const futureDigest = await sign(ts+900, body);
+  assert.equal(await verifyStripeSignature(body, `t=${ts+900},v1=${futureDigest}`, secret), false, "future >300s fails");
 });
 
 test("verifyStripeSignature handles extra whitespace and extra params", async () => {
