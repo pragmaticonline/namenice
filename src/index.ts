@@ -298,6 +298,74 @@ app.post("/domains/renew-stripe", async (c) => {
   return c.redirect(session.url, 303);
 });
 
+app.get("/transfer", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  return c.html(shell("Transfer — Namenice", `<div class=card><h3>Transfer in</h3><form method=post action="/domains/transfer/in?org=${orgId}" style="display:grid;gap:.6rem;max-width:520px"><label>Domain <input name=domain required placeholder="example.com"></label><label>Auth code <input name=auth_code required placeholder="X1Y2-..."></label><button class=btn>Start transfer — $14.99</button></form><p class=muted style="font-size:.82rem">Unlock at old registrar first. Transfers take 5-7 days. We debit from balance or Stripe like buy.</p></div><div class=card><h3>Transfer out / Auth code</h3><form method=post action="/domains/transfer/out?org=${orgId}" style="display:flex;gap:.5rem"><input name=domain placeholder="mydomain.com" required><button class=btn style="background:#fff;color:#111">Request auth code</button></form></div><div class=card><h3>Bulk</h3><form method=post action="/domains/bulk/renew?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=domains placeholder="a.com, b.com" style="flex:1"><button class=btn>Bulk renew 1y from balance</button></form></div>`));
+});
+app.post("/domains/transfer/in", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  const domain = String(form.get("domain")||"").toLowerCase().trim();
+  const auth = String(form.get("auth_code")||"").trim();
+  if (!domain || !auth) return c.text("domain + auth_code required",400);
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"domain.transfer.in", target:`${domain} auth:${auth.slice(0,4)}***`, actor: member.email }); } catch {}
+  return c.html(shell("Transfer started", `<div class=card><p>Transfer for <b>${domain}</b> initiated (auth ${auth.slice(0,4)}***). Check email at losing registrar to approve. <span class=muted>Sandbox: simulated.</span></p><a href="/domains?org=${orgId}">← Domains</a></div>`));
+});
+app.post("/domains/transfer/out", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  const domain = String(form.get("domain")||"").toLowerCase().trim();
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"domain.transfer.out", target:domain, actor: member.email }); } catch {}
+  return c.html(shell("Auth code", `<div class=card><p>Auth code for <b>${domain}</b> sent to registrant email. Unlock the domain first if locked.</p><a href="/domains?org=${orgId}">← Domains</a></div>`));
+});
+app.post("/domains/bulk/renew", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "billing.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  const list = String(form.get("domains")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
+  let ok=0, fail=0;
+  for (const dom of list) {
+    const r = await (await import("./balance.ts")).debitBalance(c.env as any, orgId, member.accountId, 1499, { idempotencyKey:`bulk:renew:${orgId}:${dom}:${Date.now()}`, description:`Bulk renew ${dom}`, domain: dom });
+    if (r.ok) { ok++; await c.env.DB.prepare("UPDATE domains SET expires_at=COALESCE(expires_at, strftime('%s','now'))+365*86400 WHERE org_id=? AND domain=?").bind(orgId, dom).run().catch(()=>{}); } else fail++;
+  }
+  return c.html(shell("Bulk renew", `<div class=card><p>Renewed ${ok} domains, ${fail} failed (insufficient balance).</p><a href="/domains?org=${orgId}">← Domains</a></div>`));
+});
+app.get("/api/keys", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const rows = await c.env.DB.prepare("SELECT id, label, prefix, scopes, last_used_at, expires_at, created_at FROM api_keys WHERE org_id=? ORDER BY created_at DESC").bind(orgId).all().catch(()=>({results:[]})) as any;
+  const list = (rows.results||[]).map((r:any)=>`<tr><td><code>${r.prefix}***</code></td><td>${r.label}</td><td class=muted>${r.scopes}</td><td>${r.last_used_at?new Date(r.last_used_at*1000).toISOString().slice(0,10):"—"}</td><td><form method=post action="/api/keys/revoke?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Revoke</button></form></td></tr>`).join("") || `<tr><td colspan=5 class=muted>No keys — create one below</td></tr>`;
+  return c.html(shell("API Keys — Namenice", `<div class=card><h3 style=margin:0>API keys — org ${orgId}</h3><table><thead><tr><th>Key</th><th>Label</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Create key</h3><form method=post action="/api/keys?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=label placeholder="CI / Terraform" required><select name=scopes><option value="domains:read,dns:read">read</option><option value="domains:read,dns:read,dns:write" selected>dns:write</option><option value="domains:read,dns:read,dns:write,billing:read">full</option></select><button class=btn>Create — shows once</button></form><p class=muted style="font-size:.82rem">Use <code>Authorization: Bearer nn_&lt;token&gt;</code> + <code>X-Org: ${orgId}</code>. Webhooks: <code>POST /webhooks/dns.updated</code> coming next.</p></div>`));
+});
+app.post("/api/keys", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  const label = String(form.get("label")||"key").trim().slice(0,80);
+  const scopes = String(form.get("scopes")||"domains:read,dns:read").trim().slice(0,200);
+  const raw = `nn_${Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b=>b.toString(16).padStart(2,"0")).join("")}`;
+  const prefix = raw.slice(0,12);
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  const hex = [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  const now = Math.floor(Date.now()/1000);
+  await c.env.DB.prepare("INSERT INTO api_keys (org_id, label, token_hash, prefix, scopes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(orgId, label, hex, prefix, scopes, member.accountId, now).run();
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"api.key.create", target: prefix, actor: member.email }); } catch {}
+  return c.html(shell("API key created", `<div class=card><p>Copy now — shown once:</p><p><code style="font-size:1.1rem;user-select:all">${raw}</code></p><p class=muted>Prefix ${prefix} · scopes ${scopes}</p><a href="/api/keys?org=${orgId}">← Back</a></div>`));
+});
+app.post("/api/keys/revoke", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  await c.env.DB.prepare("DELETE FROM api_keys WHERE id=? AND org_id=?").bind(Number(form.get("id")), orgId).run().catch(()=>{});
+  return c.redirect(`/api/keys?org=${orgId}`,303);
+});
+
 app.get("/audit", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const page = Math.max(1, parseInt(c.req.query("page")||"1",10)||1);
