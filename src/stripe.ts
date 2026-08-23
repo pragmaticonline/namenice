@@ -1,5 +1,5 @@
 import type { BalanceEnv } from "./balance.ts";
-export type StripeEnv = { STRIPE_SECRET_KEY?: string; STRIPE_WEBHOOK_SECRET?: string; STRIPE_PRICE_ID?: string; STRIPE_MONTHLY_PRICE_ID?: string; STRIPE_YEARLY_PRICE_ID?: string; };
+export type StripeEnv = { STRIPE_SECRET_KEY?: string; STRIPE_WEBHOOK_SECRET?: string; STRIPE_PORTAL_CONFIGURATION_ID?: string; STRIPE_PRICE_ID?: string; STRIPE_MONTHLY_PRICE_ID?: string; STRIPE_YEARLY_PRICE_ID?: string; };
 export function stripeConfigured(env: StripeEnv){ return !!env.STRIPE_SECRET_KEY; }
 async function stripeRequest<T>(env: StripeEnv, path: string, params: URLSearchParams): Promise<T> {
   const r = await fetch(`https://api.stripe.com/v1/${path}`, { method:"POST", headers:{ Authorization:`Basic ${btoa(`${env.STRIPE_SECRET_KEY}:`)}`, "content-type":"application/x-www-form-urlencoded"}, body: params });
