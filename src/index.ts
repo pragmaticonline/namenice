@@ -49,12 +49,27 @@ async function requireOrgMember(c: any, orgId: number): Promise<{ accountId:numb
       return { accountId: 1, email: session.user.email, role: row?.role || "owner" };
     }
   } catch {}
-  const email = "owner@example.com";
-  return { accountId: 1, email, role: "owner" };
+  return null;
 }
 
-function shell(title: string, body: string): string {
-  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem} .card{border:1px solid #e6e6e6;border-radius:12px;padding:1rem;margin:.8rem 0;background:#fafaf9} .btn{padding:.6rem 1rem;border-radius:999px;background:#111;color:#fff;border:1px solid #111} .muted{color:#6b6b6b} table{width:100%;border-collapse:collapse} th{color:#6b6b6b;text-align:left;border-bottom:1px solid #e6e6e6;padding:.4rem} td{padding:.5rem .3rem;border-bottom:1px solid #f0f0f0} input,select{padding:.6rem;border:1px solid #e6e6e6;border-radius:8px} .badge{font-size:.75rem;padding:.2rem .5rem;border-radius:999px;background:#1a8917;color:#fff}</style></head><body><h1 style="letter-spacing:-.03em">name<span style="color:#1a8917">nice</span> <span class=muted style="font-weight:400;font-size:.9rem">· modern DNS + domains</span></h1><nav style="display:flex;gap:.6rem;margin:.6rem 0"><a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn style="background:#fff;color:#111" href="/domains?org=1">Domains</a><a class=btn style="background:#fff;color:#111" href="/billing?org=1">Billing</a><a class=btn style="background:#fff;color:#111" href="/audit?org=1">Audit</a><a class=btn style="background:#fff;color:#111" href="/signin">Sign in</a></nav>${body}</body></html>`;
+async function getSessionUser(c: any): Promise<{ email:string; name?:string } | null> {
+  try {
+    const origin = new URL(c.req.url).origin;
+    const auth = createAuth(c.env as any, origin);
+    const session = await (auth as any).api.getSession({ headers: c.req.header() });
+    if (session?.user?.email) return { email: session.user.email, name: session.user.name };
+  } catch {}
+  const h = c.req.header("x-namenice-account");
+  if (h) return { email: h };
+  return null;
+}
+
+function shell(title: string, body: string, opts?: { user?: { email:string } | null }): string {
+  const user = opts?.user ?? null;
+  const nav = user
+    ? `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn style="background:#fff;color:#111" href="/domains?org=1">Domains</a><a class=btn style="background:#fff;color:#111" href="/billing?org=1">Billing</a><a class=btn style="background:#fff;color:#111" href="/audit?org=1">Audit</a><span class=muted style="align-self:center;font-size:.85rem">${user.email}</span><a class=btn style="background:#fff;color:#111" href="/signout">Sign out</a>`
+    : `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn href="/signin">Sign in</a><a class=btn style="background:#fff;color:#111" href="/signin">Create account</a>`;
+  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem} .card{border:1px solid #e6e6e6;border-radius:12px;padding:1rem;margin:.8rem 0;background:#fafaf9} .btn{padding:.6rem 1rem;border-radius:999px;background:#111;color:#fff;border:1px solid #111} .muted{color:#6b6b6b} table{width:100%;border-collapse:collapse} th{color:#6b6b6b;text-align:left;border-bottom:1px solid #e6e6e6;padding:.4rem} td{padding:.5rem .3rem;border-bottom:1px solid #f0f0f0} input,select{padding:.6rem;border:1px solid #e6e6e6;border-radius:8px} .badge{font-size:.75rem;padding:.2rem .5rem;border-radius:999px;background:#1a8917;color:#fff}</style></head><body><h1 style="letter-spacing:-.03em">name<span style="color:#1a8917">nice</span> <span class=muted style="font-weight:400;font-size:.9rem">· modern DNS + domains</span></h1><nav style="display:flex;gap:.6rem;margin:.6rem 0;flex-wrap:wrap;align-items:center">${nav}</nav>${body}</body></html>`;
 }
 
 function signinPage(): string {
@@ -67,7 +82,11 @@ form.onsubmit=async(e)=>{e.preventDefault();msg.textContent='…';submit.disable
 <\/script>`;
 }
 
-app.get("/", (c) => c.html(shell("Namenice", `<div class=card><h2>Find a name you love.</h2><p class=muted>Stripe primary · custom top-ups $5–$1000 · pay from balance · 90-day Analytics Engine audit · ${DNS_TYPES.join(" · ")} · DNSSEC · Teams</p><p><a class=btn href="/billing?org=1">Balance & billing</a> <a class=btn href="/domains?org=1" style="background:#fff;color:#111">Domains</a> <a class=btn href="/audit?org=1" style="background:#fff;color:#111">Audit log</a></p><div class=muted style="margin-top:.8rem;font-size:.85rem">Dynadot ${dynadotConfigured(c.env as any) ? `configured (${isSandboxEnabled(c.env as any) ? "sandbox" : "live"} · ${getDynadotBaseUrl(c.env as any)})` : "not configured — set DYNADOT_API_KEY/SECRET"} · Better Auth ${c.env.BETTER_AUTH_SECRET ? "ready" : "dev stub (header x-namenice-account)"}</div></div><div class=card><h3 style=margin:0>Modern DNS checklist</h3><ul class=muted style="font-size:.9rem"><li>A/AAAA/CNAME/MX/TXT/NS/SRV/CAA/ALIAS, TTL 60–86400, import zone file, bulk edit</li><li>DNSSEC, vanity NS, forwarding, WHOIS privacy, lock/unlock, auto-renew</li><li>Teams: owner/admin/billing/viewer + 7-day invitations + audit 90d</li><li>Billing: top-up via Stripe Checkout (price_data) → ledger idempotent, pay renewals from balance</li><li>API keys scoped per org + analytics query logs (AE)</li></ul></div>`)));
+app.get("/", async (c) => {
+  const user = await getSessionUser(c);
+  const publicSearch = `<div class=card><h2 style=margin:0>Find a name you love.</h2><p class=muted>Modern DNS + domains — fast, private, Stripe-powered top-ups.</p><form method=post action="/domains/search?org=1" style="display:flex;gap:.5rem;margin:1rem 0;flex-wrap:wrap" onsubmit="if(!document.cookie.includes('better-auth')){alert('Sign in to buy — you can still check availability');}"><input name=domain placeholder="example.com" required style="flex:1;min-width:240px;padding:.7rem" pattern="^.+\..+$" title="Enter a domain like example.com"><button class=btn>Check availability →</button></form><p class=muted style="font-size:.85rem">Search is public · buying, DNS & billing require an account. <a href="/signin">Sign in</a> to pay from balance ($5–$1000 top-ups) or Stripe Checkout.</p>${user ? `<p><a class=btn href="/domains?org=1">Go to your domains →</a></p>` : `<p><a class=btn href="/signin">Create account →</a> <a class=btn style="background:#fff;color:#111" href="/signin">Sign in</a></p>`}</div><div class=card><h3 style=margin:0>Why Namenice</h3><ul class=muted style="font-size:.9rem"><li>All record types A/AAAA/CNAME/MX/TXT/NS/SRV/CAA/ALIAS — TTL 60–86400</li><li>Import BIND zone file · bulk edit · URL forwarding 301/302</li><li>DNSSEC · vanity NS · WHOIS privacy · lock/unlock · auto-renew from balance</li><li>Teams: owner/admin/billing/viewer + 7-day invites + 90-day audit</li><li>API keys + webhooks + balance ledger — Stripe is only the processor</li></ul></div>`;
+  return c.html(shell("Namenice — modern DNS + domains", publicSearch, { user }));
+});
 
 app.get("/signin", (c) => c.html(shell("Sign in — Namenice", signinPage())));
 app.get("/sign-in", (c) => c.html(shell("Sign in — Namenice", signinPage())));
@@ -81,18 +100,28 @@ app.on(["GET","POST"], "/api/auth/*", async (c) => {
   } catch (e:any) { return c.text(String(e?.message||e), 500); }
 });
 
+app.get("/signout", async (c) => {
+  try { const origin = new URL(c.req.url).origin; const auth = createAuth(c.env as any, origin); await (auth as any).api.signOut({ headers: c.req.header() }); } catch {}
+  const h = c.req.header("cookie") || "";
+  c.header("Set-Cookie", `__Secure-better-auth.session_token=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+  return c.redirect("/", 302);
+});
+
 app.get("/billing", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  const user = await getSessionUser(c);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
   const ledger = await c.env.DB.prepare("SELECT type, amount_cents, balance_after, description, domain, created_at FROM balance_ledger WHERE org_id=? ORDER BY created_at DESC LIMIT 20").bind(orgId).all().catch(()=>({results:[]}));
   const rows = (ledger.results||[]).map((r:any)=>`<tr><td>${new Date(r.created_at*1000).toISOString().slice(0,19).replace("T"," ")}</td><td>${r.type}</td><td>${r.domain||r.description}</td><td style="text-align:right">${r.amount_cents>0?"+":""}$${(r.amount_cents/100).toFixed(2)}</td><td style="text-align:right">$${(r.balance_after/100).toFixed(2)}</td></tr>`).join("") || `<tr><td colspan=5 class=muted>No transactions yet.</td></tr>`;
-  return c.html(shell("Billing — Namenice", `<div class=card style="border-left:4px solid #1a8917"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem"><div><div class=muted>Account balance — org ${orgId}</div><div style="font-size:1.8rem;font-weight:800">$${(balance/100).toFixed(2)}</div><div class=muted style="font-size:.85rem">Auto-renew pays from balance first. Stripe is the processor.</div></div><form method=post action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;align-items:center"><input name=amount placeholder="25.00" value="25.00" style="padding:.6rem;border:1px solid #e6e6e6;border-radius:8px;width:110px"> <span class=muted>$</span> <button class=btn type=submit>Top up via Stripe →</button></form></div><div style="margin-top:.6rem;display:flex;gap:.5rem"><a class=btn href="/billing/topup?org=${orgId}&amount=1000" style="background:#fff;color:#111">$10</a><a class=btn href="/billing/topup?org=${orgId}&amount=2500" style="background:#fff;color:#111">$25</a><a class=btn href="/billing/topup?org=${orgId}&amount=5000" style="background:#fff;color:#111">$50</a><a class=btn href="/billing/topup?org=${orgId}&amount=10000" style="background:#fff;color:#111">$100</a> <form method=post action="/billing/portal?org=${orgId}" style="display:inline"><button class=btn style="background:#fff;color:#111">Manage billing in Stripe →</button></form></div><div class=muted style="font-size:.78rem;margin-top:.5rem">Min $5 · max $1000 per top-up · idempotent via <code>stripe_events</code> + <code>balance_ledger.idempotency_key</code></div></div><div class=card><h3 style=margin:0>Ledger (20 latest)</h3><table><thead><tr><th>When</th><th>Type</th><th>Domain/Desc</th><th style="text-align:right">Amount</th><th style="text-align:right">After</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+  return c.html(shell("Billing — Namenice", `<div class=card style="border-left:4px solid #1a8917"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem"><div><div class=muted>Account balance — org ${orgId}</div><div style="font-size:1.8rem;font-weight:800">$${(balance/100).toFixed(2)}</div><div class=muted style="font-size:.85rem">Auto-renew pays from balance first. Stripe is the processor.</div></div><form method=post action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;align-items:center"><input name=amount placeholder="25.00" value="25.00" style="padding:.6rem;border:1px solid #e6e6e6;border-radius:8px;width:110px"> <span class=muted>$</span> <button class=btn type=submit>Top up via Stripe →</button></form></div><div style="margin-top:.6rem;display:flex;gap:.5rem"><a class=btn href="/billing/topup?org=${orgId}&amount=1000" style="background:#fff;color:#111">$10</a><a class=btn href="/billing/topup?org=${orgId}&amount=2500" style="background:#fff;color:#111">$25</a><a class=btn href="/billing/topup?org=${orgId}&amount=5000" style="background:#fff;color:#111">$50</a><a class=btn href="/billing/topup?org=${orgId}&amount=10000" style="background:#fff;color:#111">$100</a> <form method=post action="/billing/portal?org=${orgId}" style="display:inline"><button class=btn style="background:#fff;color:#111">Manage billing in Stripe →</button></form></div><div class=muted style="font-size:.78rem;margin-top:.5rem">Min $5 · max $1000 per top-up · idempotent via <code>stripe_events</code> + <code>balance_ledger.idempotency_key</code></div></div><div class=card><h3 style=margin:0>Ledger (20 latest)</h3><table><thead><tr><th>When</th><th>Type</th><th>Domain/Desc</th><th style="text-align:right">Amount</th><th style="text-align:right">After</th></tr></thead><tbody>${rows}</tbody></table></div>`, { user }));
 });
 
 app.post("/billing/topup", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
-  if (!member) return c.text("forbidden", 403);
+  if (!member) return c.redirect("/signin", 302);
   if (!can(member.role, "billing.manage")) return c.text("forbidden", 403);
   if (!stripeConfigured(c.env as any)) return c.text("Stripe not configured", 503);
   let amountCents: number;
@@ -114,10 +143,11 @@ app.post("/billing/topup", async (c) => {
 app.post("/billing/portal", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
-  if (!member || !can(member.role, "billing.manage")) return c.text("forbidden",403);
+  if (!member || !can(member.role, "billing.manage")) return c.redirect("/signin",302);
   if (!stripeConfigured(c.env as any)) return c.text("Stripe not configured",503);
+  const user = await getSessionUser(c);
   const row = await c.env.DB.prepare("SELECT stripe_customer_id FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null) as any;
-  if (!row?.stripe_customer_id) return c.html(shell("Billing", `<div class=card><p>No Stripe customer yet — top up once to create it, then manage billing in Stripe.</p><a href="/billing?org=${orgId}">← Billing</a></div>`), 400);
+  if (!row?.stripe_customer_id) return c.html(shell("Billing", `<div class=card><p>No Stripe customer yet — top up once to create it, then manage billing in Stripe.</p><a href="/billing?org=${orgId}">← Billing</a></div>`, { user }), 400);
   const origin = new URL(c.req.url).origin;
   const sess = await createPortalSession(c.env as any, row.stripe_customer_id, `${origin}/billing?org=${orgId}`);
   return c.redirect(sess.url, 303);
@@ -125,13 +155,16 @@ app.post("/billing/portal", async (c) => {
 
 app.get("/domains", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  const user = await getSessionUser(c);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
   const domains = await c.env.DB.prepare("SELECT domain, status, expires_at, auto_renew, locked, privacy FROM domains WHERE org_id=? ORDER BY domain").bind(orgId).all().catch(()=>({results:[]}));
   const qDomain = c.req.query("q") || "";
   const searchResult = (c as any).get("searchResult") || null;
   const rows = (domains.results||[]).map((d:any)=>`<tr><td><b>${d.domain}</b> ${d.privacy?'<span class=badge>privacy</span>':''} ${d.locked?'<span class=muted>🔒</span>':''}</td><td>${d.status}</td><td>${d.expires_at?new Date(d.expires_at*1000).toISOString().slice(0,10):"—"}</td><td>${d.auto_renew?"On (balance)":"Off"}</td><td><a class=btn style="background:#fff;color:#111" href="/domains/${encodeURIComponent(d.domain)}/dns?org=${orgId}">DNS →</a> <form method=post action="/domains/renew?org=${orgId}" style="display:inline"><input type=hidden name=domain value="${d.domain}"><input type=hidden name=duration value="1"><label style="font-size:.85rem"><input type=checkbox name=pay_from_balance value=1 checked> balance ($${(balance/100).toFixed(2)})</label> <button class=btn>Renew 1y</button></form> <form method=post action="/domains/renew-stripe?org=${orgId}" style="display:inline"><input type=hidden name=domain value="${d.domain}"><button class=btn style="background:#fff;color:#111">Stripe →</button></form></td></tr>`).join("") || `<tr><td colspan=5 class=muted>No domains yet. Search & buy below, or link an existing domain.</td></tr>`;
   const dynOk = dynadotConfigured(c.env as any);
-  return c.html(shell("Domains — Namenice", `<div class=card><h3 style=margin:0>Search & buy — Dynadot ${dynOk ? (isSandboxEnabled(c.env as any)?"<span class=badge> sandbox </span>":"<span class=badge> live </span>") : "<span class=muted>(not configured)</span>"}</h3><form method=post action="/domains/search?org=${orgId}" style="display:flex;gap:.5rem;margin:.6rem 0;flex-wrap:wrap"><input name=domain placeholder="example.com" value="${qDomain.replaceAll('"','&quot;')}" required style="flex:1;min-width:220px"><button class=btn>Check availability</button></form><div class=muted style="font-size:.82rem">Price shown + $2 service fee. Pay from balance (atomic debit) or Stripe Checkout. ${dynOk ? "" : "Set DYNADOT_API_KEY/SECRET to enable live search."}</div>${searchResult?`<div class=card style="margin-top:.6rem"><b>${searchResult.domain}</b> — ${searchResult.available?"<span class=badge>available</span>":"taken"} ${searchResult.price?`· $${searchResult.price} /yr`: ""} ${searchResult.available?`<form method=post action="/domains/buy?org=${orgId}" style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><input type=hidden name=domain value="${searchResult.domain}"><select name=duration><option value=1>1y</option><option value=2>2y</option><option value=5>5y</option><option value=10>10y</option></select><label><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)})</label><button class=btn>Buy ${searchResult.domain}</button></form>`:""}</div>`:""}</div><div class=card><h3 style=margin:0>Your domains — org ${orgId}</h3><table><thead><tr><th>Domain</th><th>Status</th><th>Expires</th><th>Auto-renew</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Link external domain</h3><form method=post action="/domains/link?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=domain placeholder="mydomain.com" required><button class=btn style="background:#fff;color:#111">Link →</button></form><div class=muted style="font-size:.82rem">For bring-your-own DNS: point NS to us or add CNAME to ${c.env.CNAME_TARGET||"fallback.blognice.com"}</div></div>`));
+  return c.html(shell("Domains — Namenice", `<div class=card><h3 style=margin:0>Search & buy — Dynadot ${dynOk ? (isSandboxEnabled(c.env as any)?"<span class=badge> sandbox </span>":"<span class=badge> live </span>") : "<span class=muted>(not configured)</span>"}</h3><form method=post action="/domains/search?org=${orgId}" style="display:flex;gap:.5rem;margin:.6rem 0;flex-wrap:wrap"><input name=domain placeholder="example.com" value="${qDomain.replaceAll('"','&quot;')}" required style="flex:1;min-width:220px"><button class=btn>Check availability</button></form><div class=muted style="font-size:.82rem">Price shown + $2 service fee. Pay from balance (atomic debit) or Stripe Checkout. ${dynOk ? "" : "Set DYNADOT_API_KEY/SECRET to enable live search."}</div>${searchResult?`<div class=card style="margin-top:.6rem"><b>${searchResult.domain}</b> — ${searchResult.available?"<span class=badge>available</span>":"taken"} ${searchResult.price?`· $${searchResult.price} /yr`: ""} ${searchResult.available?`<form method=post action="/domains/buy?org=${orgId}" style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><input type=hidden name=domain value="${searchResult.domain}"><select name=duration><option value=1>1y</option><option value=2>2y</option><option value=5>5y</option><option value=10>10y</option></select><label><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)})</label><button class=btn>Buy ${searchResult.domain}</button></form>`:""}</div>`:""}</div><div class=card><h3 style=margin:0>Your domains — org ${orgId}</h3><table><thead><tr><th>Domain</th><th>Status</th><th>Expires</th><th>Auto-renew</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Link external domain</h3><form method=post action="/domains/link?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=domain placeholder="mydomain.com" required><button class=btn style="background:#fff;color:#111">Link →</button></form><div class=muted style="font-size:.82rem">For bring-your-own DNS: point NS to us or add CNAME to ${c.env.CNAME_TARGET||"fallback.blognice.com"}</div></div>`, { user }));
 });
 
 app.post("/domains/search", async (c) => {
@@ -251,15 +284,18 @@ app.post("/domains/buy", async (c) => {
 
 app.get("/domains/:domain/dns", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  const user = await getSessionUser(c);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const domain = c.req.param("domain").toLowerCase();
   const exists = await c.env.DB.prepare("SELECT 1 FROM domains WHERE org_id=? AND domain=?").bind(orgId, domain).first().catch(()=>null);
-  if (!exists) return c.html(shell("Not found", `<div class=card><p>Domain ${domain} not in org ${orgId}. <a href="/domains?org=${orgId}">← Back</a></p></div>`), 404);
+  if (!exists) return c.html(shell("Not found", `<div class=card><p>Domain ${domain} not in org ${orgId}. <a href="/domains?org=${orgId}">← Back</a></p></div>`, { user }), 404);
   const records = await listDns(c.env as any, orgId, domain);
   const rows = records.map((r:any)=>`<tr><td><b>${r.host}</b></td><td>${r.type}</td><td style="word-break:break-all">${r.value}</td><td>${r.ttl}</td><td>${r.priority ?? "—"}</td><td><form method=post action="/domains/${encodeURIComponent(domain)}/dns/remove?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Remove</button></form></td></tr>`).join("") || `<tr><td colspan=6 class=muted>No records. Add one below. Default: we prefill @ A for fallback.</td></tr>`;
   return c.html(shell(`DNS — ${domain}`, `<div class=card><h3 style=margin:0>DNS — ${domain} <span class=muted style=font-weight:400>· org ${orgId}</span></h3><table><thead><tr><th>Host</th><th>Type</th><th>Value</th><th>TTL</th><th>Prio</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Add record</h3><form method=post action="/domains/${encodeURIComponent(domain)}/dns/add?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:end"><label>Host <input name=host placeholder="@" value="@" required></label><label>Type <select name=type>${DNS_TYPES.map(t=>`<option>${t}</option>`).join("")}</select></label><label>Value <input name=value placeholder="1.2.3.4 or target" required style="min-width:240px"></label><label>TTL <input name=ttl type=number value=3600 min=60 max=86400 style="width:90px"></label><label>Prio <input name=priority type=number placeholder="10" style="width:70px"></label><button class=btn>Add</button></form><div class=muted style="font-size:.82rem;margin-top:.4rem">Examples: <code>@ A 76.76.21.21</code> · <code>www CNAME ${domain}</code> · <code>@ MX mail.example.com (prio 10)</code> · <code>@ TXT v=spf1 include:_spf.example.com ~all</code></div></div><div class=card><h3 style=margin:0>Import zone file</h3><form method=post action="/domains/${encodeURIComponent(domain)}/dns/import?org=${orgId}"><textarea name=zone placeholder="; BIND zone&#10;@ 3600 IN A 76.76.21.21&#10;www 3600 IN CNAME @" rows=4 style="width:100%;padding:.6rem;border:1px solid #e6e6e6;border-radius:8px"></textarea><button class=btn style="margin-top:.4rem">Import →</button></form><p class=muted style="font-size:.82rem">Bulk: paste BIND. For CSV bulk use API.</p></div>
 <div class=card><h3 style=margin:0>URL forwarding</h3><form method=post action="/domains/${encodeURIComponent(domain)}/forward?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=host placeholder="@" value="@" style="width:80px"><input name=target placeholder="https://example.com" style="flex:1" required><select name=code><option value=301>301</option><option value=302>302</option></select><button class=btn>Forward →</button></form><p class=muted style="font-size:.82rem">Edge 301/302 via Worker. Vanity NS: set to <code>ns1.namenice.net / ns2.namenice.net</code> + enable DNSSEC below.</p></div>
 <div class=card><h3 style=margin:0>DNSSEC</h3><p class=muted style="font-size:.85rem">DS/DNSKEY — coming soon. We’ll publish <code>DNSKEY</code> and you add <code>DS</code> at registrar. Audit: <code>dns.dnssec.enable</code></p><form method=post action="/domains/${encodeURIComponent(domain)}/dns?org=${orgId}" onsubmit="return false"><button class=btn style="background:#fff;color:#111" disabled>Enable DNSSEC (soon)</button></form></div>
-<div class=card><h3 style=margin:0>Nameservers</h3><p class=muted style="font-size:.85rem">We host DNS at Namenice. If domain is at Dynadot, set NS to <code>ns1.namenice.net / ns2.namenice.net</code> or keep Dynadot DNS and we sync via API.</p><form method=post action="/domains/${encodeURIComponent(domain)}/ns?org=${orgId}" style="display:flex;gap:.5rem"><input name=ns placeholder="ns1.namenice.net, ns2.namenice.net" style="flex:1"><button class=btn style="background:#fff;color:#111">Update NS</button></form></div>`));
+<div class=card><h3 style=margin:0>Nameservers</h3><p class=muted style="font-size:.85rem">We host DNS at Namenice. If domain is at Dynadot, set NS to <code>ns1.namenice.net / ns2.namenice.net</code> or keep Dynadot DNS and we sync via API.</p><form method=post action="/domains/${encodeURIComponent(domain)}/ns?org=${orgId}" style="display:flex;gap:.5rem"><input name=ns placeholder="ns1.namenice.net, ns2.namenice.net" style="flex:1"><button class=btn style="background:#fff;color:#111">Update NS</button></form></div>`, { user }));
 });
 
 app.post("/domains/:domain/dns/add", async (c) => {
@@ -400,14 +436,17 @@ app.post("/domains/bulk/renew", async (c) => {
 });
 app.get("/api/keys", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  const user = await getSessionUser(c);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const rows = await c.env.DB.prepare("SELECT id, label, prefix, scopes, last_used_at, expires_at, created_at FROM api_keys WHERE org_id=? ORDER BY created_at DESC").bind(orgId).all().catch(()=>({results:[]})) as any;
   const list = (rows.results||[]).map((r:any)=>`<tr><td><code>${r.prefix}***</code></td><td>${r.label}</td><td class=muted>${r.scopes}</td><td>${r.last_used_at?new Date(r.last_used_at*1000).toISOString().slice(0,10):"—"}</td><td><form method=post action="/api/keys/revoke?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Revoke</button></form></td></tr>`).join("") || `<tr><td colspan=5 class=muted>No keys — create one below</td></tr>`;
-  return c.html(shell("API Keys — Namenice", `<div class=card><h3 style=margin:0>API keys — org ${orgId}</h3><table><thead><tr><th>Key</th><th>Label</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Create key</h3><form method=post action="/api/keys?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=label placeholder="CI / Terraform" required><select name=scopes><option value="domains:read,dns:read">read</option><option value="domains:read,dns:read,dns:write" selected>dns:write</option><option value="domains:read,dns:read,dns:write,billing:read">full</option></select><button class=btn>Create — shows once</button></form><p class=muted style="font-size:.82rem">Use <code>Authorization: Bearer nn_&lt;token&gt;</code> + <code>X-Org: ${orgId}</code>. Webhooks: <code>POST /webhooks/dns.updated</code> coming next.</p></div>`));
+  return c.html(shell("API Keys — Namenice", `<div class=card><h3 style=margin:0>API keys — org ${orgId}</h3><table><thead><tr><th>Key</th><th>Label</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Create key</h3><form method=post action="/api/keys?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=label placeholder="CI / Terraform" required><select name=scopes><option value="domains:read,dns:read">read</option><option value="domains:read,dns:read,dns:write" selected>dns:write</option><option value="domains:read,dns:read,dns:write,billing:read">full</option></select><button class=btn>Create — shows once</button></form><p class=muted style="font-size:.82rem">Use <code>Authorization: Bearer nn_&lt;token&gt;</code> + <code>X-Org: ${orgId}</code>. Webhooks: <code>POST /webhooks/dns.updated</code> coming next.</p></div>`, { user }));
 });
 app.post("/api/keys", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
-  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  if (!member || !can(member.role, "domains.manage")) return c.redirect("/signin",302);
   const form = await c.req.formData();
   const label = String(form.get("label")||"key").trim().slice(0,80);
   const scopes = String(form.get("scopes")||"domains:read,dns:read").trim().slice(0,200);
@@ -418,21 +457,25 @@ app.post("/api/keys", async (c) => {
   const now = Math.floor(Date.now()/1000);
   await c.env.DB.prepare("INSERT INTO api_keys (org_id, label, token_hash, prefix, scopes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(orgId, label, hex, prefix, scopes, member.accountId, now).run();
   try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"api.key.create", target: prefix, actor: member.email }); } catch {}
-  return c.html(shell("API key created", `<div class=card><p>Copy now — shown once:</p><p><code style="font-size:1.1rem;user-select:all">${raw}</code></p><p class=muted>Prefix ${prefix} · scopes ${scopes}</p><a href="/api/keys?org=${orgId}">← Back</a></div>`));
+  const user = await getSessionUser(c);
+  return c.html(shell("API key created", `<div class=card><p>Copy now — shown once:</p><p><code style="font-size:1.1rem;user-select:all">${raw}</code></p><p class=muted>Prefix ${prefix} · scopes ${scopes}</p><a href="/api/keys?org=${orgId}">← Back</a></div>`, { user }));
 });
 app.get("/webhooks", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  const user = await getSessionUser(c);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const rows = await c.env.DB.prepare("SELECT id, url, events, active, created_at FROM webhooks WHERE org_id=? ORDER BY created_at DESC").bind(orgId).all().catch(()=>({results:[]})) as any;
   const list = (rows.results||[]).map((r:any)=>`<tr><td style="word-break:break-all">${r.url}</td><td>${r.events}</td><td>${r.active?"active":"paused"}</td><td><form method=post action="/webhooks/delete?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Delete</button></form></td></tr>`).join("") || `<tr><td colspan=4 class=muted>No webhooks — add one for dns.updated / domain.renewed</td></tr>`;
   return c.html(shell("Webhooks — Namenice", `<div class=card><h3 style=margin:0>Webhooks — org ${orgId}</h3><table><thead><tr><th>URL</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Add webhook</h3><form method=post action="/webhooks?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=url placeholder="https://example.com/hook" required style="flex:1"><select name=events><option value="dns.updated">dns.updated</option><option value="domain.renewed">domain.renewed</option><option value="domain.registered">domain.registered</option><option value="*">* (all)</option></select><button class=btn>Create</button></form><p class=muted style="font-size:.82rem">Signed with <code>X-Namenice-Signature: sha256=hex(HMAC secret, body)</code>. Terraform: <code>provider "namenice" { api_key = "nn_..." }</code> — stub.</p></div><div class=card><h3 style=margin:0>CLI / Terraform</h3><pre style="background:#111;color:#0f0;padding:.8rem;border-radius:8px;overflow:auto">npm i -g namenice-cli  # coming soon
 namenice domains list --org ${orgId}
 namenice dns add ${"example.com"} --host @ --type A --value 1.2.3.4
-terraform { required_providers { namenice = { source = "pragmaticonline/namenice" } } }</pre></div>`));
+terraform { required_providers { namenice = { source = "pragmaticonline/namenice" } } }</pre></div>`, { user }));
 });
 app.post("/webhooks", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
-  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  if (!member || !can(member.role, "domains.manage")) return c.redirect("/signin",302);
   const form = await c.req.formData();
   const url = String(form.get("url")||"").trim().slice(0,500);
   const events = String(form.get("events")||"dns.updated").trim().slice(0,200);
@@ -440,12 +483,13 @@ app.post("/webhooks", async (c) => {
   const secret = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,"0")).join("");
   const now = Math.floor(Date.now()/1000);
   await c.env.DB.prepare("INSERT INTO webhooks (org_id, url, events, secret, created_at) VALUES (?, ?, ?, ?, ?)").bind(orgId, url, events, secret, now).run();
-  return c.html(shell("Webhook created", `<div class=card><p>Webhook for <b>${events}</b> → ${url}</p><p>Secret: <code>${secret}</code> (store it — HMAC verification)</p><a href="/webhooks?org=${orgId}">← Back</a></div>`));
+  const user = await getSessionUser(c);
+  return c.html(shell("Webhook created", `<div class=card><p>Webhook for <b>${events}</b> → ${url}</p><p>Secret: <code>${secret}</code> (store it — HMAC verification)</p><a href="/webhooks?org=${orgId}">← Back</a></div>`, { user }));
 });
 app.post("/webhooks/delete", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
-  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  if (!member || !can(member.role, "domains.manage")) return c.redirect("/signin",302);
   const form = await c.req.formData();
   await c.env.DB.prepare("DELETE FROM webhooks WHERE id=? AND org_id=?").bind(Number(form.get("id")), orgId).run().catch(()=>{});
   return c.redirect(`/webhooks?org=${orgId}`,303);
@@ -454,7 +498,7 @@ app.post("/webhooks/delete", async (c) => {
 app.post("/api/keys/revoke", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
-  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  if (!member || !can(member.role, "domains.manage")) return c.redirect("/signin",302);
   const form = await c.req.formData();
   await c.env.DB.prepare("DELETE FROM api_keys WHERE id=? AND org_id=?").bind(Number(form.get("id")), orgId).run().catch(()=>{});
   return c.redirect(`/api/keys?org=${orgId}`,303);
@@ -462,12 +506,15 @@ app.post("/api/keys/revoke", async (c) => {
 
 app.get("/audit", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  const user = await getSessionUser(c);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const page = Math.max(1, parseInt(c.req.query("page")||"1",10)||1);
   try {
     const { entries, hasMore } = await auditReport(c.env as any, orgId, 90, page, 50);
     const rows = entries.map(e=>`<tr><td>${e.occurredAt}</td><td>${e.action}</td><td>${e.target||"—"}</td><td>${e.actor||"—"}</td></tr>`).join("") || `<tr><td colspan=4 class=muted>No actions in last 90 days.</td></tr>`;
-    return c.html(shell("Audit log — 90 days", `<div class=card><div style="display:flex;justify-content:space-between"><h3 style="margin:0">Audit log</h3><span class=muted>Last 90 days · Analytics Engine</span></div><table><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Actor</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;margin-top:.6rem">${page>1?`<a href="/audit?org=${orgId}&page=${page-1}">← Prev</a> `:""}${hasMore?`<a href="/audit?org=${orgId}&page=${page+1}">Next →</a>`:""}</div></div>`));
-  } catch (e:any) { return c.html(shell("Audit", `<div class=card><p>Could not load audit: ${String(e?.message||e).slice(0,300)}</p><p class=muted>Configure CF_ACCOUNT_ID + CF_ANALYTICS_TOKEN.</p></div>`), 502); }
+    return c.html(shell("Audit log — 90 days", `<div class=card><div style="display:flex;justify-content:space-between"><h3 style="margin:0">Audit log</h3><span class=muted>Last 90 days · Analytics Engine</span></div><table><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Actor</th></tr></thead><tbody>${rows}</tbody></table><div style="text-align:right;margin-top:.6rem">${page>1?`<a href="/audit?org=${orgId}&page=${page-1}">← Prev</a> `:""}${hasMore?`<a href="/audit?org=${orgId}&page=${page+1}">Next →</a>`:""}</div></div>`, { user }));
+  } catch (e:any) { return c.html(shell("Audit", `<div class=card><p>Could not load audit: ${String(e?.message||e).slice(0,300)}</p><p class=muted>Configure CF_ACCOUNT_ID + CF_ANALYTICS_TOKEN.</p></div>`, { user }), 502); }
 });
 
 app.post("/stripe/webhook", async (c) => {
