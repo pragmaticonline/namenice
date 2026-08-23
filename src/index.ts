@@ -395,6 +395,37 @@ app.post("/api/keys", async (c) => {
   try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"api.key.create", target: prefix, actor: member.email }); } catch {}
   return c.html(shell("API key created", `<div class=card><p>Copy now — shown once:</p><p><code style="font-size:1.1rem;user-select:all">${raw}</code></p><p class=muted>Prefix ${prefix} · scopes ${scopes}</p><a href="/api/keys?org=${orgId}">← Back</a></div>`));
 });
+app.get("/webhooks", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const rows = await c.env.DB.prepare("SELECT id, url, events, active, created_at FROM webhooks WHERE org_id=? ORDER BY created_at DESC").bind(orgId).all().catch(()=>({results:[]})) as any;
+  const list = (rows.results||[]).map((r:any)=>`<tr><td style="word-break:break-all">${r.url}</td><td>${r.events}</td><td>${r.active?"active":"paused"}</td><td><form method=post action="/webhooks/delete?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Delete</button></form></td></tr>`).join("") || `<tr><td colspan=4 class=muted>No webhooks — add one for dns.updated / domain.renewed</td></tr>`;
+  return c.html(shell("Webhooks — Namenice", `<div class=card><h3 style=margin:0>Webhooks — org ${orgId}</h3><table><thead><tr><th>URL</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Add webhook</h3><form method=post action="/webhooks?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=url placeholder="https://example.com/hook" required style="flex:1"><select name=events><option value="dns.updated">dns.updated</option><option value="domain.renewed">domain.renewed</option><option value="domain.registered">domain.registered</option><option value="*">* (all)</option></select><button class=btn>Create</button></form><p class=muted style="font-size:.82rem">Signed with <code>X-Namenice-Signature: sha256=hex(HMAC secret, body)</code>. Terraform: <code>provider "namenice" { api_key = "nn_..." }</code> — stub.</p></div><div class=card><h3 style=margin:0>CLI / Terraform</h3><pre style="background:#111;color:#0f0;padding:.8rem;border-radius:8px;overflow:auto">npm i -g namenice-cli  # coming soon
+namenice domains list --org ${orgId}
+namenice dns add ${"example.com"} --host @ --type A --value 1.2.3.4
+terraform { required_providers { namenice = { source = "pragmaticonline/namenice" } } }</pre></div>`));
+});
+app.post("/webhooks", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  const url = String(form.get("url")||"").trim().slice(0,500);
+  const events = String(form.get("events")||"dns.updated").trim().slice(0,200);
+  if (!url.startsWith("https://")) return c.text("https url required",400);
+  const secret = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,"0")).join("");
+  const now = Math.floor(Date.now()/1000);
+  await c.env.DB.prepare("INSERT INTO webhooks (org_id, url, events, secret, created_at) VALUES (?, ?, ?, ?, ?)").bind(orgId, url, events, secret, now).run();
+  return c.html(shell("Webhook created", `<div class=card><p>Webhook for <b>${events}</b> → ${url}</p><p>Secret: <code>${secret}</code> (store it — HMAC verification)</p><a href="/webhooks?org=${orgId}">← Back</a></div>`));
+});
+app.post("/webhooks/delete", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member || !can(member.role, "domains.manage")) return c.text("forbidden",403);
+  const form = await c.req.formData();
+  await c.env.DB.prepare("DELETE FROM webhooks WHERE id=? AND org_id=?").bind(Number(form.get("id")), orgId).run().catch(()=>{});
+  return c.redirect(`/webhooks?org=${orgId}`,303);
+});
+
 app.post("/api/keys/revoke", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);

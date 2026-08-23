@@ -179,3 +179,13 @@ CREATE TABLE domain_forwards (
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_forwards_org_domain ON domain_forwards(org_id, domain);
+CREATE TABLE webhooks (
+  id INTEGER PRIMARY KEY,
+  org_id INTEGER NOT NULL,
+  url TEXT NOT NULL,
+  events TEXT NOT NULL,
+  secret TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
