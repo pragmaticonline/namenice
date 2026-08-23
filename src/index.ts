@@ -97,6 +97,15 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+app.use("*", async (c, next) => {
+  await next();
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("X-Frame-Options", "DENY");
+  c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.namenice.net; frame-ancestors 'none'");
+});
+
 async function requireOrgMember(c: any, orgId: number): Promise<{ accountId:number; email:string; role:string } | null> {
   try {
     const origin = new URL(c.req.url).origin;
@@ -131,7 +140,7 @@ function shell(title: string, body: string, opts?: { user?: { email:string } | n
   const nav = user
     ? `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn style="background:#fff;color:#111" href="/domains?org=${org}">Domains</a><a class=btn style="background:#fff;color:#111" href="/billing?org=${org}">Billing</a><a class=btn style="background:#fff;color:#111" href="/audit?org=${org}">Audit</a><span class=muted style="align-self:center;font-size:.85rem">${esc(user.email)}</span><a class=btn style="background:#fff;color:#111" href="/signout">Sign out</a>`
     : `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn href="/signin">Sign in</a><a class=btn style="background:#fff;color:#111" href="/signin">Create account</a>`;
-  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem} .card{border:1px solid #e6e6e6;border-radius:12px;padding:1rem;margin:.8rem 0;background:#fafaf9} .btn{padding:.6rem 1rem;border-radius:999px;background:#111;color:#fff;border:1px solid #111} .muted{color:#6b6b6b} table{width:100%;border-collapse:collapse} th{color:#6b6b6b;text-align:left;border-bottom:1px solid #e6e6e6;padding:.4rem} td{padding:.5rem .3rem;border-bottom:1px solid #f0f0f0} input,select{padding:.6rem;border:1px solid #e6e6e6;border-radius:8px} .badge{font-size:.75rem;padding:.2rem .5rem;border-radius:999px;background:#1a8917;color:#fff}</style></head><body><h1 style="letter-spacing:-.03em">name<span style="color:#1a8917">nice</span> <span class=muted style="font-weight:400;font-size:.9rem">· modern DNS + domains</span></h1><nav style="display:flex;gap:.6rem;margin:.6rem 0;flex-wrap:wrap;align-items:center">${nav}</nav>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem} .card{border:1px solid #e6e6e6;border-radius:12px;padding:1rem;margin:.8rem 0;background:#fafaf9} .btn{padding:.6rem 1rem;border-radius:999px;background:#111;color:#fff;border:1px solid #111} .muted{color:#6b6b6b} table{width:100%;border-collapse:collapse} th{color:#6b6b6b;text-align:left;border-bottom:1px solid #e6e6e6;padding:.4rem} td{padding:.5rem .3rem;border-bottom:1px solid #f0f0f0} input,select{padding:.6rem;border:1px solid #e6e6e6;border-radius:8px} .badge{font-size:.75rem;padding:.2rem .5rem;border-radius:999px;background:#1a8917;color:#fff}</style></head><body><h1 style="letter-spacing:-.03em">name<span style="color:#1a8917">nice</span> <span class=muted style="font-weight:400;font-size:.9rem">· modern DNS + domains</span></h1><nav style="display:flex;gap:.6rem;margin:.6rem 0;flex-wrap:wrap;align-items:center">${nav}</nav>${body}</body></html>`;
 }
 
 function signinPage(): string {
@@ -146,7 +155,7 @@ form.onsubmit=async(e)=>{e.preventDefault();msg.textContent='…';submit.disable
 
 app.get("/", async (c) => {
   const user = await getSessionUser(c);
-  const publicSearch = `<div class=card><h2 style=margin:0>Find a name you love.</h2><p class=muted>Modern DNS + domains — fast, private, Stripe-powered top-ups.</p><form method=post action="/domains/search?org=1" style="display:flex;gap:.5rem;margin:1rem 0;flex-wrap:wrap" onsubmit="if(!document.cookie.includes('better-auth')){alert('Sign in to buy — you can still check availability');}"><input name=domain placeholder="example.com" required style="flex:1;min-width:240px;padding:.7rem" pattern="^.+\..+$" title="Enter a domain like example.com"><button class=btn>Check availability →</button></form><p class=muted style="font-size:.85rem">Search is public · buying, DNS & billing require an account. <a href="/signin">Sign in</a> to pay from balance ($5–$1000 top-ups) or Stripe Checkout.</p>${user ? `<p><a class=btn href="/domains?org=1">Go to your domains →</a></p>` : `<p><a class=btn href="/signin">Create account →</a> <a class=btn style="background:#fff;color:#111" href="/signin">Sign in</a></p>`}</div><div class=card><h3 style=margin:0>Why Namenice</h3><ul class=muted style="font-size:.9rem"><li>All record types A/AAAA/CNAME/MX/TXT/NS/SRV/CAA/ALIAS — TTL 60–86400</li><li>Import BIND zone file · bulk edit · URL forwarding 301/302</li><li>DNSSEC · vanity NS · WHOIS privacy · lock/unlock · auto-renew from balance</li><li>Teams: owner/admin/billing/viewer + 7-day invites + 90-day audit</li><li>API keys + webhooks + balance ledger — Stripe is only the processor</li></ul></div>`;
+  const publicSearch = `<div class=card><h2 style=margin:0>Find a name you love.</h2><p class=muted>Modern DNS + domains — fast, private, Stripe-powered top-ups.</p><form method=post action="/domains/search" style="display:flex;gap:.5rem;margin:1rem 0;flex-wrap:wrap" onsubmit="if(!document.cookie.includes('better-auth')){alert('Sign in to buy — you can still check availability');}"><input name=domain placeholder="example.com" required style="flex:1;min-width:240px;padding:.7rem" pattern="^.+\..+$" title="Enter a domain like example.com"><button class=btn>Check availability →</button></form><p class=muted style="font-size:.85rem">Search is public · buying, DNS & billing require an account. <a href="/signin">Sign in</a> to pay from balance ($5–$1000 top-ups) or Stripe Checkout.</p>${user ? `<p><a class=btn href="/domains?org=1">Go to your domains →</a></p>` : `<p><a class=btn href="/signin">Create account →</a> <a class=btn style="background:#fff;color:#111" href="/signin">Sign in</a></p>`}</div><div class=card><h3 style=margin:0>Why Namenice</h3><ul class=muted style="font-size:.9rem"><li>All record types A/AAAA/CNAME/MX/TXT/NS/SRV/CAA/ALIAS — TTL 60–86400</li><li>Import BIND zone file · bulk edit · URL forwarding 301/302</li><li>DNSSEC · vanity NS · WHOIS privacy · lock/unlock · auto-renew from balance</li><li>Teams: owner/admin/billing/viewer + 7-day invites + 90-day audit</li><li>API keys + webhooks + balance ledger — Stripe is only the processor</li></ul></div>`;
   return c.html(shell("Namenice — modern DNS + domains", publicSearch, { user }));
 });
 
@@ -159,6 +168,12 @@ app.get("/sitemap.xml", (c) => {
   c.header("Content-Type", "application/xml");
   c.header("Cache-Control", "public, max-age=3600");
   return c.body(xml, 200);
+});
+
+app.get("/robots.txt", (c) => {
+  c.header("Content-Type", "text/plain");
+  c.header("Cache-Control", "public, max-age=86400");
+  return c.body(`User-agent: *\nAllow: /\nSitemap: https://www.namenice.net/sitemap.xml\n`, 200);
 });
 
 app.get("/favicon.ico", (c) => {
@@ -352,7 +367,10 @@ app.get("/domains", async (c) => {
 });
 
 app.post("/domains/search", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const _u = await getSessionUser(c);
+  const _exp = _u?.email ? await requireExplicitOrg(c, _u.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  if (!(_exp as any).ok) return (_exp as any).response;
+  const orgId = (_exp as any).orgId as number;
   const form = await c.req.formData();
   const domain = String(form.get("domain")||"").toLowerCase().trim();
   if (!domain) return c.text("domain required", 400);
