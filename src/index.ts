@@ -346,4 +346,30 @@ app.post("/stripe/webhook", async (c) => {
   }
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
+    const now = Math.floor(Date.now()/1000);
+    const cutoff = now + 30*86400;
+    const due = await env.DB.prepare("SELECT org_id, domain, expires_at FROM domains WHERE auto_renew=1 AND expires_at IS NOT NULL AND expires_at < ? LIMIT 50").bind(cutoff).all().catch(()=>({results:[]})) as any;
+    for (const d of (due.results||[])) {
+      const orgId = (d as any).org_id as number;
+      const domain = (d as any).domain as string;
+      const amountCents = 1499;
+      // try balance first
+      const bal = await env.DB.prepare("SELECT balance_cents FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null) as any;
+      if (bal && bal.balance_cents >= amountCents) {
+        try {
+          const { debitBalance } = await import("./balance.ts");
+          const r = await debitBalance(env as any, orgId, 0, amountCents, { idempotencyKey: `cron:renew:${orgId}:${domain}:${new Date().toISOString().slice(0,10)}`, description: `Auto-renew ${domain} 1y`, domain });
+          if (r.ok) {
+            await env.DB.prepare("UPDATE domains SET expires_at=COALESCE(expires_at, ?)+365*86400 WHERE org_id=? AND domain=?").bind(now, orgId, domain).run().catch(()=>{});
+            try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(env as any, orgId, { action:"domain.renew.cron.balance", target: domain, actor:"cron" }); } catch {}
+          }
+        } catch {}
+      } else {
+        try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(env as any, orgId, { action:"domain.renew.cron.insufficient_balance", target: `${domain} $${(amountCents/100).toFixed(2)}`, actor:"cron" }); } catch {}
+      }
+    }
+  }
+};
