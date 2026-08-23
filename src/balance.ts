@@ -33,7 +33,7 @@ export async function creditTopup(env: BalanceEnv, orgId: number, amountCents: n
   await env.DB.batch([
     env.DB.prepare("INSERT OR IGNORE INTO org_balances (org_id, balance_cents, updated_at) VALUES (?,0,?)").bind(orgId, now),
     env.DB.prepare("UPDATE org_balances SET balance_cents = balance_cents + ?, updated_at=? WHERE org_id=?").bind(amountCents, now, orgId),
-    env.DB.prepare("INSERT INTO balance_ledger (org_id, account_id, type, amount_cents, balance_after, description, stripe_session_id, idempotency_key, created_at) VALUES (?, ?, 'topup', ?, (SELECT balance_cents FROM org_balances WHERE org_id=?), ?, ?, ?, ?)").bind(orgId, Number(actor)||0, amountCents, orgId, `Top-up via Stripe`, stripeSessionId, idempotencyKey, now),
+    env.DB.prepare("INSERT OR IGNORE INTO balance_ledger (org_id, account_id, type, amount_cents, balance_after, description, stripe_session_id, idempotency_key, created_at) VALUES (?, ?, 'topup', ?, (SELECT balance_cents FROM org_balances WHERE org_id=?), ?, ?, ?, ?)").bind(orgId, Number(actor)||0, amountCents, orgId, `Top-up via Stripe`, stripeSessionId, idempotencyKey, now),
   ]);
   try { recordAuditEvent(env as any, orgId, { action:"balance.topup", target:`+$${(amountCents/100).toFixed(2)}`, actor }); } catch {}
 }
