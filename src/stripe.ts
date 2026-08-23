@@ -46,6 +46,11 @@ export function createDomainCheckoutWithBalanceFallback(env: StripeEnv, input: {
   p.set("metadata[duration]", String(input.duration));
   return stripeRequest<{id:string;url:string}>(env,"checkout/sessions",p);
 }
+export function createPortalSession(env: StripeEnv, customerId: string, returnUrl: string){
+  const p = new URLSearchParams({ customer: customerId, return_url: returnUrl });
+  if (env.STRIPE_PORTAL_CONFIGURATION_ID) p.set("configuration", env.STRIPE_PORTAL_CONFIGURATION_ID);
+  return stripeRequest<{id:string;url:string}>(env,"billing_portal/sessions",p);
+}
 export async function verifyStripeSignature(raw:string, sig:string|undefined, secret:string|undefined): Promise<boolean> {
   if(!sig||!secret) return false;
   const parts = Object.fromEntries(sig.split(",").map(s=>{const [k,v]=s.split("=");return [k,v]}));
