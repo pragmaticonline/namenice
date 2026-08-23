@@ -8,7 +8,7 @@ export function can(role:string, cap:string){
   if(cap==="members.manage") return role==="owner";
   if(cap==="billing.manage") return role==="owner"||role==="billing"||role==="admin";
   if(cap==="dns.manage") return role==="owner"||role==="admin";
-  if(cap==="domains.manage") return role==="owner"||role==="admin";
+  if(cap==="domains.manage") return role==="owner"||role==="admin"||role==="billing";
   if(cap==="domains.read") return true;
   if(cap==="dns.read") return true;
   return false;

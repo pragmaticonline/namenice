@@ -236,7 +236,7 @@ app.get("/settings", async (c) => {
   const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
   const companyToggle = isPersonal
     ? `<form method=post action="/settings/company?org=${orgId}"><label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=company value=1> Company — upgrade this Personal Organization to a Company Organization</label> <button class=btn type=submit>Upgrade to Company →</button></form><p class=muted style=font-size:.85rem>In-place upgrade: Domains and balance stay on this org (no move). Needed to invite members.</p>`
-    : `<div class=card style="border-left:4px solid #111"><b>Company Organization</b><p class=muted style=font-size:.9rem>Upgrade complete — members and invites enabled. Domains/balance unchanged on org ${orgId}.</p></div>`;
+    : `<div class=card style="border-left:4px solid #111"><b>Company Organization</b><p class=muted style=font-size:.9rem>Upgrade complete — members and invites enabled. Domains/balance unchanged on org ${orgId}.</p></div><div class=card><h3 style=margin:0>Invite member</h3><form method=post action="/settings/members/invite?org=${orgId}" style="display:grid;gap:.5rem;max-width:420px"><label>Email <input name=email type=email required placeholder="colleague@company.com"></label><label>Role <select name=role><option value=viewer selected>viewer — read only</option><option value=billing>billing — money only</option><option value=admin>admin — domains + DNS</option><option value=owner>owner — all</option></select></label><button class=btn type=submit>Invite →</button></form><p class=muted style=font-size:.82rem>Invites live 7 days (token_hash) — invitee accepts via POST /invite/accept with token. Personal Organization stays solo.</p></div><div class=card><h3 style=margin:0>Accept invite</h3><form method=post action="/invite/accept" style="display:flex;gap:.5rem"><input name=token placeholder="paste invite token" required style="flex:1"><button class=btn type=submit>Accept →</button></form></div>`;
   return c.html(shell("Settings — Namenice", `<div class=card><h3 style=margin:0>Settings — ${esc(org?.title||`org ${orgId}`)}</h3><div class=muted style=font-size:.9rem>Type: ${isPersonal ? "Personal Organization (solo — treated as you)" : "Company Organization"}</div>${companyToggle}<p style="margin-top:.8rem"><a href="/billing?org=${orgId}">Billing →</a> · <a href="/domains?org=${orgId}">Domains →</a></p></div>`, { user, orgId }));
 });
 
@@ -256,6 +256,58 @@ app.post("/settings/company", async (c) => {
   });
   try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"org.upgrade.company", target:`org ${orgId}`, actor: member.email }); } catch {}
   return c.redirect(`/settings?org=${orgId}`, 303);
+});
+
+app.post("/settings/members/invite", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member) return c.redirect("/signin", 302);
+  if (!can(member.role, "members.manage")) return c.text("forbidden", 403);
+  const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
+  const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
+  const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
+  if (isPersonal) return c.text("invite requires Company Organization — upgrade first", 400);
+  const form = await c.req.formData();
+  const email = String(form.get("email")||"").toLowerCase().trim();
+  const role = String(form.get("role")||"viewer").trim() as any;
+  if (!email || !email.includes("@")) return c.text("valid email required", 400);
+  if (!["owner","admin","billing","viewer"].includes(role)) return c.text("invalid role", 400);
+  const token = crypto.randomUUID() + "-" + Math.random().toString(36).slice(2,10);
+  const hashBuf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const token_hash = [...new Uint8Array(hashBuf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  const now = Math.floor(Date.now()/1000);
+  const expires_at = now + 7*86400;
+  await c.env.DB.prepare("INSERT INTO organization_invitations (org_id, email, role, token_hash, invited_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(orgId, email, role, token_hash, member.accountId, expires_at, now).run().catch(async (e:any)=>{
+    const msg = String(e?.message||"");
+    if (msg.includes("no such table") || msg.includes("token_hash")) throw e;
+  });
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"org.invite.create", target:`${email} ${role}`, actor: member.email }); } catch {}
+  return c.html(shell("Invite created", `<div class=card><p>Invite for <b>${esc(email)}</b> as <b>${esc(role)}</b> created — 7-day token (keep safe):</p><pre style="padding:.6rem;background:#f5f5f5;border-radius:8px;overflow:auto">${esc(token)}</pre><p class=muted style=font-size:.85rem>Share this token with the invitee to accept at <code>POST /invite/accept</code>. Stored as token_hash.</p><p><a href="/settings?org=${orgId}">← Settings</a></p></div>`));
+});
+
+app.post("/invite/accept", async (c) => {
+  const form = await c.req.formData().catch(()=>null);
+  const token = String(form?.get("token")|| c.req.query("token")||"").trim();
+  if (!token) return c.text("token required", 400);
+  const hashBuf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const token_hash = [...new Uint8Array(hashBuf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  const inv = await c.env.DB.prepare("SELECT org_id, email, role, expires_at, accepted_at FROM organization_invitations WHERE token_hash=?").bind(token_hash).first().catch(()=>null) as any;
+  if (!inv) return c.text("invalid token", 404);
+  const now = Math.floor(Date.now()/1000);
+  if (inv.expires_at < now) return c.text("token expired", 410);
+  if (inv.accepted_at) return c.text("already accepted", 409);
+  const user = await getSessionUser(c);
+  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(`/invite/accept?token=${token}`)}`, 302);
+  if (user.email.toLowerCase() !== String(inv.email).toLowerCase()) return c.text("email mismatch — sign in as invited email", 403);
+  let acc = await c.env.DB.prepare("SELECT id FROM accounts WHERE email=?").bind(user.email.toLowerCase()).first().catch(()=>null) as any;
+  if (!acc) {
+    await c.env.DB.prepare("INSERT OR IGNORE INTO accounts (email, password_hash, status, billing_status, created_at) VALUES (?, '', 'active', 'inactive', ?)").bind(user.email.toLowerCase(), now).run().catch(()=>{});
+    acc = await c.env.DB.prepare("SELECT id FROM accounts WHERE email=?").bind(user.email.toLowerCase()).first().catch(()=>null) as any;
+  }
+  await c.env.DB.prepare("INSERT OR IGNORE INTO organization_members (account_id, org_id, role, created_at) VALUES (?, ?, ?, ?)").bind(acc.id, inv.org_id, inv.role, now).run().catch(()=>{});
+  await c.env.DB.prepare("UPDATE organization_invitations SET accepted_at=? WHERE token_hash=?").bind(now, token_hash).run().catch(()=>{});
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, inv.org_id, { action:"org.invite.accept", target:`${inv.email} ${inv.role}`, actor: user.email }); } catch {}
+  return c.redirect(`/domains?org=${inv.org_id}`, 303);
 });
 
 app.get("/domains", async (c) => {

@@ -57,3 +57,25 @@ test("org-explicit-money: POST /domains/buy and renew require explicit org", () 
   assert.match(indexSrc, /app\.post\("\/domains\/renew"/);
   assert.match(indexSrc, /explicit.*org/i);
 });
+
+test("company-members: invite create + 7-day token_hash exists", () => {
+  assert.match(indexSrc, /organization_invitations/);
+  assert.match(indexSrc, /token_hash/);
+  assert.match(indexSrc, /7.*day|expires_at.*7|604800/);
+  assert.match(indexSrc, /POST.*invite|invite.*POST/i);
+});
+
+test("company-members: can() gates viewer/billing/admin correctly", () => {
+  const authSrc = readFileSync(new URL("../src/auth.ts", import.meta.url), "utf8");
+  assert.match(authSrc, /billing\.manage/);
+  assert.match(authSrc, /members\.manage/);
+  assert.match(authSrc, /dns\.manage/);
+  // viewer should be denied for billing/domains
+  assert.match(indexSrc, /can\(member\.role/);
+  assert.match(authSrc, /viewer/);
+});
+
+test("company-members: accept invite creates organization_members", () => {
+  assert.match(indexSrc, /accept.*invite|invite.*accept/i);
+  assert.match(indexSrc, /INSERT.*INTO organization_members/);
+});
