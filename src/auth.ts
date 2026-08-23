@@ -6,7 +6,7 @@ export type Role = typeof ROLES[number];
 export function can(role:string, cap:string){
   if(role==="owner") return true;
   if(cap==="members.manage") return role==="owner";
-  if(cap==="billing.manage") return role==="owner"||role==="billing"||role==="admin";
+  if(cap==="billing.manage") return role==="owner";
   if(cap==="dns.manage") return role==="owner"||role==="admin";
   if(cap==="domains.manage") return role==="owner"||role==="admin"||role==="billing";
   if(cap==="domains.read") return true;

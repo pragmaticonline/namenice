@@ -28,13 +28,13 @@ _Avoid_: Entry, row
 **Domain Contact**: WHOIS contact data (registrant/admin/tech) for a Domain, stored via `domain_contacts` and Dynadot.
 _Avoid_: Contact info, registrant (unqualified)
 
-**Org Balance**: Prepaid wallet for an Organization (`org_balances.balance_cents`, USD cents) used for purchases and renewals.
+**Org Balance**: Prepaid wallet for an Organization (`org_balances.balance_cents`, USD cents) owned by the Organization but funded solely by its owning Account; only the Organization owner is ever billed, members are never charged separately. Used for purchases and renewals.
 _Avoid_: Credits, funds, wallet (unqualified)
 
-**Top-up**: Adding funds to an Org Balance via Stripe Checkout (`POST /billing/topup`, `balance_topup` webhook) within $5–$1000.
+**Top-up**: Adding funds to an Org Balance via Stripe Checkout (`POST /billing/topup`, `balance_topup` webhook) within $5–$1000 — may only be initiated by the Organization owner; the Stripe customer is the owner's.
 _Avoid_: Deposit, recharge, add funds, credit
 
-**Purchase**: Acquiring or renewing a Domain, paid from Org Balance first with Stripe Checkout fallback.
+**Purchase**: Acquiring or renewing a Domain, paid from Org Balance first with Stripe Checkout fallback — the charge is always to the owning Account's Stripe customer, never to a member's card.
 _Avoid_: Buy, order
 
 **Ledger Entry**: Immutable `balance_ledger` row recording a balance movement, keyed by `idempotency_key` and linked to `stripe_events` for exactly-once processing.
