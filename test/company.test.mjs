@@ -23,3 +23,20 @@ test("solo-first: every Domain and balance remains org-owned (single owner invar
   // org_balances is org_id PK, not account_id
   assert.match(indexSrc, /org_id/);
 });
+
+test("company-upgrade: schema has is_company flag on organizations", () => {
+  const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
+  assert.match(schema, /is_company/);
+});
+
+test("company-upgrade: Company checkbox + POST upgrade endpoint exists", () => {
+  assert.match(indexSrc, /POST.*company|company.*upgrade/i);
+  assert.match(indexSrc, /is_company/);
+  assert.match(indexSrc, /Company/);
+});
+
+test("company-upgrade: billing/domains flip to Organization when is_company or member>1", () => {
+  assert.match(indexSrc, /Organization balance/);
+  assert.match(indexSrc, /memberCount|COUNT\(\*\)/);
+  assert.match(indexSrc, /isPersonal|is_company/);
+});

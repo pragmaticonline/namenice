@@ -12,6 +12,7 @@ CREATE TABLE organizations (
   public_id TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
+  is_company INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 CREATE TABLE organization_members (

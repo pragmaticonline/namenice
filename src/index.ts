@@ -48,7 +48,7 @@ async function ensurePersonalOrganization(env: any, email: string): Promise<numb
     const slug = `${slugBase}-${rand}`;
     const publicId = `org_${rand}${Date.now().toString(36)}`;
     const title = clean;
-    await env.DB.prepare("INSERT OR IGNORE INTO organizations (public_id, slug, title, created_at) VALUES (?, ?, ?, ?)").bind(publicId, slug, title, now).run().catch(()=>{});
+    await env.DB.prepare("INSERT OR IGNORE INTO organizations (public_id, slug, title, is_company, created_at) VALUES (?, ?, ?, 0, ?)").bind(publicId, slug, title, now).run().catch(()=>{});
     const org = await env.DB.prepare("SELECT id FROM organizations WHERE public_id=?").bind(publicId).first().catch(()=>null) as any;
     const orgId = org?.id as number;
     if (!orgId) return null;
@@ -56,6 +56,14 @@ async function ensurePersonalOrganization(env: any, email: string): Promise<numb
     await env.DB.prepare("INSERT OR IGNORE INTO org_balances (org_id, balance_cents, updated_at) VALUES (?, 0, ?)").bind(orgId, now).run().catch(()=>{});
     return orgId;
   } catch { return null; }
+}
+
+async function isCompanyOrg(env: any, orgId: number): Promise<boolean> {
+  try {
+    const row = await env.DB.prepare("SELECT is_company FROM organizations WHERE id=?").bind(orgId).first().catch(()=>null) as any;
+    if (row && typeof row.is_company !== "undefined") return !!row.is_company;
+  } catch {}
+  return false;
 }
 
 app.use("*", async (c, next) => {
@@ -148,11 +156,15 @@ app.get("/billing", async (c) => {
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
-  const isPersonal = (memberCount?.c ?? 1) <= 1;
+  const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
+  const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
   const balanceLabel = isPersonal ? "Your balance" : `Organization balance — org ${orgId}`;
   const ledger = await c.env.DB.prepare("SELECT type, amount_cents, balance_after, description, domain, created_at FROM balance_ledger WHERE org_id=? ORDER BY created_at DESC LIMIT 20").bind(orgId).all().catch(()=>({results:[]}));
   const rows = (ledger.results||[]).map((r:any)=>`<tr><td>${new Date(r.created_at*1000).toISOString().slice(0,19).replace("T"," ")}</td><td>${esc(r.type)}</td><td>${esc(r.domain||r.description)}</td><td style="text-align:right">${r.amount_cents>0?"+":""}$${(r.amount_cents/100).toFixed(2)}</td><td style="text-align:right">$${(r.balance_after/100).toFixed(2)}</td></tr>`).join("") || `<tr><td colspan=5 class=muted>No transactions yet.</td></tr>`;
-  return c.html(shell("Billing — Namenice", `<div class=card style="border-left:4px solid #1a8917"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem"><div><div class=muted>${esc(balanceLabel)}</div><div style="font-size:1.8rem;font-weight:800">$${(balance/100).toFixed(2)}</div><div class=muted style="font-size:.85rem">Auto-renew pays from balance first. Stripe is the processor.</div></div><form method=post action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;align-items:center"><input name=amount placeholder="25.00" value="25.00" style="padding:.6rem;border:1px solid #e6e6e6;border-radius:8px;width:110px"> <span class=muted>$</span> <button class=btn type=submit>Top up via Stripe →</button></form></div><div style="margin-top:.6rem;display:flex;gap:.5rem"><a class=btn href="/billing/topup?org=${orgId}&amount=1000" style="background:#fff;color:#111">$10</a><a class=btn href="/billing/topup?org=${orgId}&amount=2500" style="background:#fff;color:#111">$25</a><a class=btn href="/billing/topup?org=${orgId}&amount=5000" style="background:#fff;color:#111">$50</a><a class=btn href="/billing/topup?org=${orgId}&amount=10000" style="background:#fff;color:#111">$100</a> <form method=post action="/billing/portal?org=${orgId}" style="display:inline"><button class=btn style="background:#fff;color:#111">Manage billing in Stripe →</button></form></div><div class=muted style="font-size:.78rem;margin-top:.5rem">Min $5 · max $1000 per top-up · idempotent via <code>stripe_events</code> + <code>balance_ledger.idempotency_key</code></div></div><div class=card><h3 style=margin:0>Ledger (20 latest)</h3><table><thead><tr><th>When</th><th>Type</th><th>Domain/Desc</th><th style="text-align:right">Amount</th><th style="text-align:right">After</th></tr></thead><tbody>${rows}</tbody></table></div>`, { user, orgId }));
+  const companyCard = isPersonal
+    ? `<div class=card><h3 style=margin:0>Organization type</h3><p class=muted style=font-size:.9rem>You're using a <b>Personal Organization</b> — treated as you, not a company. Tick "Company" to upgrade to a Company Organization and invite members.</p><form method=post action="/settings/company?org=${orgId}"><label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=company value=1> Company — upgrade to Company Organization</label> <button class=btn type=submit>Upgrade →</button></form></div>`
+    : `<div class=card style="border-left:4px solid #111"><h3 style=margin:0>Company Organization</h3><p class=muted style=font-size:.9rem>This is a <b>Company Organization</b> — members and invites enabled. Domains and balance stay on this org (no move).</p></div>`;
+  return c.html(shell("Billing — Namenice", `<div class=card style="border-left:4px solid #1a8917"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem"><div><div class=muted>${esc(balanceLabel)}</div><div style="font-size:1.8rem;font-weight:800">$${(balance/100).toFixed(2)}</div><div class=muted style="font-size:.85rem">Auto-renew pays from balance first. Stripe is the processor.</div></div><form method=post action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;align-items:center"><input name=amount placeholder="25.00" value="25.00" style="padding:.6rem;border:1px solid #e6e6e6;border-radius:8px;width:110px"> <span class=muted>$</span> <button class=btn type=submit>Top up via Stripe →</button></form></div><div style="margin-top:.6rem;display:flex;gap:.5rem"><a class=btn href="/billing/topup?org=${orgId}&amount=1000" style="background:#fff;color:#111">$10</a><a class=btn href="/billing/topup?org=${orgId}&amount=2500" style="background:#fff;color:#111">$25</a><a class=btn href="/billing/topup?org=${orgId}&amount=5000" style="background:#fff;color:#111">$50</a><a class=btn href="/billing/topup?org=${orgId}&amount=10000" style="background:#fff;color:#111">$100</a> <form method=post action="/billing/portal?org=${orgId}" style="display:inline"><button class=btn style="background:#fff;color:#111">Manage billing in Stripe →</button></form></div><div class=muted style="font-size:.78rem;margin-top:.5rem">Min $5 · max $1000 per top-up · idempotent via <code>stripe_events</code> + <code>balance_ledger.idempotency_key</code></div></div>${companyCard}<div class=card><h3 style=margin:0>Ledger (20 latest)</h3><table><thead><tr><th>When</th><th>Type</th><th>Domain/Desc</th><th style="text-align:right">Amount</th><th style="text-align:right">After</th></tr></thead><tbody>${rows}</tbody></table></div>`, { user, orgId }));
 });
 
 app.post("/billing/topup", async (c) => {
@@ -190,18 +202,55 @@ app.post("/billing/portal", async (c) => {
   return c.redirect(sess.url, 303);
 });
 
+app.get("/settings", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  const user = await getSessionUser(c);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  const org = await c.env.DB.prepare("SELECT is_company, title FROM organizations WHERE id=?").bind(orgId).first().catch(()=>null) as any;
+  const isCompanyFlag = !!org?.is_company;
+  const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
+  const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
+  const companyToggle = isPersonal
+    ? `<form method=post action="/settings/company?org=${orgId}"><label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=company value=1> Company — upgrade this Personal Organization to a Company Organization</label> <button class=btn type=submit>Upgrade to Company →</button></form><p class=muted style=font-size:.85rem>In-place upgrade: Domains and balance stay on this org (no move). Needed to invite members.</p>`
+    : `<div class=card style="border-left:4px solid #111"><b>Company Organization</b><p class=muted style=font-size:.9rem>Upgrade complete — members and invites enabled. Domains/balance unchanged on org ${orgId}.</p></div>`;
+  return c.html(shell("Settings — Namenice", `<div class=card><h3 style=margin:0>Settings — ${esc(org?.title||`org ${orgId}`)}</h3><div class=muted style=font-size:.9rem>Type: ${isPersonal ? "Personal Organization (solo — treated as you)" : "Company Organization"}</div>${companyToggle}<p style="margin-top:.8rem"><a href="/billing?org=${orgId}">Billing →</a> · <a href="/domains?org=${orgId}">Domains →</a></p></div>`, { user, orgId }));
+});
+
+app.post("/settings/company", async (c) => {
+  const orgId = Number(c.req.query("org") || 1);
+  const member = await requireOrgMember(c, orgId);
+  if (!member) return c.redirect("/signin", 302);
+  if (!can(member.role, "members.manage")) return c.text("forbidden", 403);
+  const form = await c.req.formData().catch(()=>null);
+  const wantsCompany = form ? String(form.get("company")||"") === "1" : true;
+  if (!wantsCompany) return c.text("Company upgrade requires checkbox", 400);
+  const existing = await c.env.DB.prepare("SELECT is_company FROM organizations WHERE id=?").bind(orgId).first().catch(()=>null) as any;
+  if (existing && existing.is_company) return c.redirect(`/settings?org=${orgId}`, 303);
+  await c.env.DB.prepare("UPDATE organizations SET is_company=1 WHERE id=?").bind(orgId).run().catch(async ()=> {
+    try { await c.env.DB.prepare("ALTER TABLE organizations ADD COLUMN is_company INTEGER NOT NULL DEFAULT 0").run(); } catch {}
+    await c.env.DB.prepare("UPDATE organizations SET is_company=1 WHERE id=?").bind(orgId).run().catch(()=>{});
+  });
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"org.upgrade.company", target:`org ${orgId}`, actor: member.email }); } catch {}
+  return c.redirect(`/settings?org=${orgId}`, 303);
+});
+
 app.get("/domains", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
+  const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
+  const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
+  const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
+  const domainsLabel = isPersonal ? `Your domains — org ${orgId}` : `Organization domains — org ${orgId}`;
   const domains = await c.env.DB.prepare("SELECT domain, status, expires_at, auto_renew, locked, privacy FROM domains WHERE org_id=? ORDER BY domain").bind(orgId).all().catch(()=>({results:[]}));
   const qDomain = c.req.query("q") || "";
   const searchResult = (c as any).get("searchResult") || null;
   const rows = (domains.results||[]).map((d:any)=>`<tr><td><b>${esc(d.domain)}</b> ${d.privacy?'<span class=badge>privacy</span>':''} ${d.locked?'<span class=muted>🔒</span>':''}</td><td>${d.status}</td><td>${d.expires_at?new Date(d.expires_at*1000).toISOString().slice(0,10):"—"}</td><td>${d.auto_renew?"On (balance)":"Off"}</td><td><a class=btn style="background:#fff;color:#111" href="/domains/${encodeURIComponent(d.domain)}/dns?org=${orgId}">DNS →</a> <form method=post action="/domains/renew?org=${orgId}" style="display:inline"><input type=hidden name=domain value="${esc(d.domain)}"><input type=hidden name=duration value="1"><label style="font-size:.85rem"><input type=checkbox name=pay_from_balance value=1 checked> balance ($${(balance/100).toFixed(2)})</label> <button class=btn>Renew 1y</button></form> <form method=post action="/domains/renew-stripe?org=${orgId}" style="display:inline"><input type=hidden name=domain value="${esc(d.domain)}"><button class=btn style="background:#fff;color:#111">Stripe →</button></form></td></tr>`).join("") || `<tr><td colspan=5 class=muted>No domains yet. Search & buy below, or link an existing domain.</td></tr>`;
   const dynOk = dynadotConfigured(c.env as any);
-  return c.html(shell("Domains — Namenice", `<div class=card><h3 style=margin:0>Search & buy — Dynadot ${dynOk ? (isSandboxEnabled(c.env as any)?"<span class=badge> sandbox </span>":"<span class=badge> live </span>") : "<span class=muted>(not configured)</span>"}</h3><form method=post action="/domains/search?org=${orgId}" style="display:flex;gap:.5rem;margin:.6rem 0;flex-wrap:wrap"><input name=domain placeholder="example.com" value="${esc(qDomain)}" required style="flex:1;min-width:220px"><button class=btn>Check availability</button></form><div class=muted style="font-size:.82rem">Price shown + $2 service fee. Pay from balance (atomic debit) or Stripe Checkout. ${dynOk ? "" : "Set DYNADOT_API_KEY/SECRET to enable live search."}</div>${searchResult?`<div class=card style="margin-top:.6rem"><b>${esc(searchResult.domain)}</b> — ${searchResult.available?"<span class=badge>available</span>":"taken"} ${searchResult.price?`· $${searchResult.price} /yr`: ""} ${searchResult.available?`<form method=post action="/domains/buy?org=${orgId}" style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><input type=hidden name=domain value="${esc(searchResult.domain)}"><select name=duration><option value=1>1y</option><option value=2>2y</option><option value=5>5y</option><option value=10>10y</option></select><label><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)})</label><button class=btn>Buy ${searchResult.domain}</button></form>`:""}</div>`:""}</div><div class=card><h3 style=margin:0>Your domains — org ${orgId}</h3><table><thead><tr><th>Domain</th><th>Status</th><th>Expires</th><th>Auto-renew</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Link external domain</h3><form method=post action="/domains/link?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=domain placeholder="mydomain.com" required><button class=btn style="background:#fff;color:#111">Link →</button></form><div class=muted style="font-size:.82rem">For bring-your-own DNS: point NS to us or add CNAME to ${c.env.CNAME_TARGET||"fallback.blognice.com"}</div></div>`, { user, orgId }));
+  return c.html(shell("Domains — Namenice", `<div class=card><h3 style=margin:0>Search & buy — Dynadot ${dynOk ? (isSandboxEnabled(c.env as any)?"<span class=badge> sandbox </span>":"<span class=badge> live </span>") : "<span class=muted>(not configured)</span>"}</h3><form method=post action="/domains/search?org=${orgId}" style="display:flex;gap:.5rem;margin:.6rem 0;flex-wrap:wrap"><input name=domain placeholder="example.com" value="${esc(qDomain)}" required style="flex:1;min-width:220px"><button class=btn>Check availability</button></form><div class=muted style="font-size:.82rem">Price shown + $2 service fee. Pay from balance (atomic debit) or Stripe Checkout. ${dynOk ? "" : "Set DYNADOT_API_KEY/SECRET to enable live search."}</div>${searchResult?`<div class=card style="margin-top:.6rem"><b>${esc(searchResult.domain)}</b> — ${searchResult.available?"<span class=badge>available</span>":"taken"} ${searchResult.price?`· $${searchResult.price} /yr`: ""} ${searchResult.available?`<form method=post action="/domains/buy?org=${orgId}" style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><input type=hidden name=domain value="${esc(searchResult.domain)}"><select name=duration><option value=1>1y</option><option value=2>2y</option><option value=5>5y</option><option value=10>10y</option></select><label><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)})</label><button class=btn>Buy ${searchResult.domain}</button></form>`:""}</div>`:""}</div><div class=card><h3 style=margin:0>${esc(domainsLabel)}</h3><table><thead><tr><th>Domain</th><th>Status</th><th>Expires</th><th>Auto-renew</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Link external domain</h3><form method=post action="/domains/link?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=domain placeholder="mydomain.com" required><button class=btn style="background:#fff;color:#111">Link →</button></form><div class=muted style="font-size:.82rem">For bring-your-own DNS: point NS to us or add CNAME to ${c.env.CNAME_TARGET||"fallback.blognice.com"}</div></div>`, { user, orgId }));
 });
 
 app.post("/domains/search", async (c) => {
