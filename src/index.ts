@@ -4,7 +4,7 @@ import { createTopupCheckoutSession, createDomainCheckoutWithBalanceFallback, cr
 import { debitBalance, getOrgBalance, creditTopup, type BalanceEnv } from "./balance.ts";
 import { can, createAuth } from "./auth.ts";
 import { listDns, addDns, removeDns, DNS_TYPES } from "./dns.ts";
-import { dynadotConfigured, getDynadotBaseUrl, searchDomain, isSandboxEnabled } from "./dynadot.ts";
+import { dynadotConfigured, getDynadotBaseUrl, searchDomain, isSandboxEnabled, createContact, registerDomain } from "./dynadot.ts";
 
 type Bindings = MetricsEnv & BalanceEnv & {
   DB: D1Database;
@@ -134,7 +134,19 @@ app.post("/domains/search", async (c) => {
     price = "14.99";
   }
   const balance = await getOrgBalance(c.env as any, orgId);
-  return c.html(shell("Search — "+domain, `<div class=card><h3>${domain} — ${available?'<span class=badge>available</span>':'<span class=muted>taken</span>'}</h3>${price?`<p>Price: $${price} /yr <span class=muted>incl. $2 fee</span></p>`:""}${available?`<form method=post action="/domains/buy?org=${orgId}"><input type=hidden name=domain value="${domain}"><label>Duration <select name=duration><option value=1>1y</option><option value=2>2y</option></select></label> <label><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)})</label> <button class=btn>Buy $${price}</button></form>`:`<p class=muted>Try another name.</p>`}<p><a href="/domains?org=${orgId}">← Back to domains</a></p></div>`));
+  return c.html(shell("Search — "+domain, `<div class=card><h3>${domain} — ${available?'<span class=badge>available</span>':'<span class=muted>taken</span>'}</h3>${price?`<p>Price: $${price} /yr <span class=muted>incl. $2 fee</span></p>`:""}${available?`<form method=post action="/domains/buy?org=${orgId}" style="display:grid;gap:.6rem;max-width:560px">
+      <input type=hidden name=domain value="${domain}">
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Your name <input name=contact_name required placeholder="Jane Doe" maxlength=80></label><label>Email <input name=contact_email type=email required placeholder="jane@example.com"></label></div>
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Phone CC <input name=contact_phone_cc required placeholder="1" value="1" maxlength=5></label><label>Phone <input name=contact_phone required placeholder="5551234567" maxlength=20></label></div>
+      <label>Address <input name=contact_address1 required placeholder="123 Main St" maxlength=120></label>
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>City <input name=contact_city required placeholder="San Francisco" maxlength=80></label><label>State <input name=contact_state placeholder="CA" maxlength=80></label></div>
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>ZIP <input name=contact_zip required placeholder="94105" maxlength=20></label><label>Country (2-letter) <input name=contact_country required placeholder="US" value="US" maxlength=2 style="text-transform:uppercase"></label></div>
+      <label>Organization (optional) <input name=contact_org placeholder="Acme Inc" maxlength=80></label>
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Privacy <select name=privacy><option value="full" selected>Full</option><option value="partial">Partial</option><option value="off">Off</option></select></label><label>Duration <select name=duration><option value=1 selected>1y — $${price}</option><option value=2>2y</option><option value=5>5y</option><option value=10>10y</option></select></label></div>
+      <label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)}) — else Stripe Checkout</label>
+      <button class=btn type=submit>Buy ${domain} — $${price}</button>
+      <p class=muted style="font-size:.8rem;margin:0">By purchasing you agree to Dynadot registration terms. ${isSandboxEnabled(c.env as any)?"Sandbox simulated purchase.":""}</p>
+    </form>`:`<p class=muted>Try another name.</p>`}<p><a href="/domains?org=${orgId}">← Back to domains</a></p></div>`));
 });
 
 app.post("/domains/link", async (c) => {
@@ -158,19 +170,57 @@ app.post("/domains/buy", async (c) => {
   const domain = String(form.get("domain")||"").toLowerCase().trim();
   const duration = Number(form.get("duration")||1);
   const payFromBalance = String(form.get("pay_from_balance")||"") === "1";
+  const privacy = (String(form.get("privacy")||"full") as "off"|"partial"|"full");
+  const contact = {
+    name: String(form.get("contact_name")||"").trim().slice(0,80),
+    email: String(form.get("contact_email")||member.email).trim().slice(0,120),
+    phone_cc: String(form.get("contact_phone_cc")||"1").trim().slice(0,5),
+    phone_number: String(form.get("contact_phone")||"").trim().slice(0,20),
+    address1: String(form.get("contact_address1")||"").trim().slice(0,120),
+    city: String(form.get("contact_city")||"").trim().slice(0,80),
+    state: String(form.get("contact_state")||"").trim().slice(0,80),
+    zip: String(form.get("contact_zip")||"").trim().slice(0,20),
+    country: String(form.get("contact_country")||"US").trim().toUpperCase().slice(0,2),
+    organization: String(form.get("contact_org")||"").trim().slice(0,80) || undefined,
+  };
+  if (!contact.name || !contact.email || !contact.phone_number || !contact.address1 || !contact.city || !contact.zip || !contact.country) {
+    return c.html(shell("Buy — missing fields", `<div class=card><p>Please fill name, email, phone, address, city, zip, country.</p><a href="/domains?org=${orgId}">← Back</a></div>`), 400);
+  }
   const amountCents = 1499 + (duration-1)*1299;
+  const now = Math.floor(Date.now()/1000);
+  const doDynadotRegister = async (): Promise<{ok:boolean; error?:string}> => {
+    if (!dynadotConfigured(c.env as any)) return {ok:true};
+    try {
+      const cc = await createContact(c.env as any, { name: contact.name, email: contact.email, phone_number: contact.phone_number, phone_cc: contact.phone_cc, address1: contact.address1, city: contact.city, state: contact.state, zip: contact.zip, country: contact.country, organization: contact.organization });
+      if (!cc.ok || !cc.data?.contact_id) return {ok:false, error: cc.error || "Dynadot contact failed"};
+      const cid = cc.data.contact_id as number;
+      const reg = await registerDomain(c.env as any, domain, { duration, registrant_contact_id: cid, admin_contact_id: cid, tech_contact_id: cid, billing_contact_id: cid, privacy });
+      if (!reg.ok) return {ok:false, error: reg.error || "Dynadot register failed"};
+      try { await c.env.DB.prepare("INSERT INTO domain_contacts (org_id, domain, contact_type, dynadot_contact_id, payload, created_at) VALUES (?, ?, 'registrant', ?, ?, ?)").bind(orgId, domain, String(cid), JSON.stringify(contact), now).run(); } catch {}
+      return {ok:true};
+    } catch (e:any) { return {ok:false, error: String(e?.message||e).slice(0,400)}; }
+  };
   if (payFromBalance) {
-    const r = await debitBalance(c.env as any, orgId, member.accountId, amountCents, { idempotencyKey:`buy:${orgId}:${domain}:${duration}`, description:`Buy ${domain} ${duration}y`, domain });
-    if (!r.ok) return c.html(shell("Buy failed", `<div class=card><p>${r.error}</p><p><a class=btn href="/billing?org=${orgId}">Top up →</a></p></div>`), 402);
-    const now = Math.floor(Date.now()/1000);
-    await c.env.DB.prepare("INSERT OR IGNORE INTO domains (org_id, domain, status, expires_at, created_at) VALUES (?, ?, 'active', ?, ?)").bind(orgId, domain, now + duration*365*86400, now).run().catch(()=>{});
-    try { recordAuditEvent(c.env as any, orgId, { action:"domain.buy.balance", target:domain, actor:member.email }); } catch {}
-    return c.html(shell("Purchased", `<div class=card><p>Purchased <b>${domain}</b> for ${duration}y — debited $${(amountCents/100).toFixed(2)} (balance $${(r.balanceAfter!/100).toFixed(2)}).</p><p><a class=btn href="/domains/${encodeURIComponent(domain)}/dns?org=${orgId}">Manage DNS →</a></p></div>`));
+    const r = await debitBalance(c.env as any, orgId, member.accountId, amountCents, { idempotencyKey:`buy:${orgId}:${domain}:${duration}`, description:`Buy ${domain} ${duration}y privacy:${privacy}`, domain });
+    if (!r.ok) return c.html(shell("Buy failed", `<div class=card><p>${r.error}</p><p><a class=btn href="/billing?org=${orgId}">Top up →</a> <a class=btn href="/billing?org=${orgId}" style="background:#fff;color:#111">Manage billing in Stripe →</a></p></div>`), 402);
+    const reg = await doDynadotRegister();
+    if (!reg.ok) {
+      // refund
+      try { const { creditTopup } = await import("./balance.ts"); await creditTopup(c.env as any, orgId, amountCents, `refund:${domain}:${now}`, `refund:buy:${orgId}:${domain}:${duration}`, String(member.accountId)); } catch {}
+      return c.html(shell("Dynadot failed — refunded", `<div class=card><p>Dynadot error: ${reg.error} — your balance was refunded.</p><a href="/domains?org=${orgId}">← Back</a></div>`), 502);
+    }
+    await c.env.DB.prepare("INSERT OR IGNORE INTO domains (org_id, domain, status, privacy, locked, expires_at, created_at) VALUES (?, ?, 'active', ?, 1, ?, ?)").bind(orgId, domain, privacy==="full"?1:privacy==="partial"?1:0, now + duration*365*86400, now).run().catch(()=>{});
+    try { recordAuditEvent(c.env as any, orgId, { action:"domain.buy.balance", target:`${domain} ${duration}y ${privacy}`, actor:member.email }); } catch {}
+    return c.html(shell("Purchased", `<div class=card><p>Purchased <b>${domain}</b> for ${duration}y (privacy ${privacy}) — debited $${(amountCents/100).toFixed(2)} (balance $${(r.balanceAfter!/100).toFixed(2)}).</p><p><a class=btn href="/domains/${encodeURIComponent(domain)}/dns?org=${orgId}">Manage DNS →</a> <a class=btn href="/domains?org=${orgId}" style="background:#fff;color:#111">← Domains</a></p></div>`));
   }
   if (!stripeConfigured(c.env as any)) return c.text("Stripe not configured", 503);
   const origin = new URL(c.req.url).origin;
-  const balRow = await c.env.DB.prepare("SELECT stripe_customer_id FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null);
-  const session = await createDomainCheckoutWithBalanceFallback(c.env as any, { orgId, accountId: member.accountId, email: member.email, customerId: (balRow as any)?.stripe_customer_id||null, domain, duration, amountCents, successUrl: `${origin}/domains?org=${orgId}`, cancelUrl: `${origin}/domains?org=${orgId}` });
+  const balRow = await c.env.DB.prepare("SELECT stripe_customer_id FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null) as any;
+  // stash contact in metadata via checkout session? For now stash in domains pending and Stripe metadata privacy
+  const session = await createDomainCheckoutWithBalanceFallback(c.env as any, { orgId, accountId: member.accountId, email: contact.email, customerId: balRow?.stripe_customer_id||null, domain, duration, amountCents, successUrl: `${origin}/domains?org=${orgId}`, cancelUrl: `${origin}/domains?org=${orgId}` });
+  // also record intent for webhook to use full contact
+  try { await c.env.DB.prepare("INSERT OR IGNORE INTO domains (org_id, domain, status, privacy, created_at) VALUES (?, ?, 'pending', ?, ?)").bind(orgId, domain, privacy==="full"?1:0, now).run(); await c.env.DB.prepare("INSERT OR IGNORE INTO domain_contacts (org_id, domain, contact_type, payload, created_at) VALUES (?, ?, 'pending', ?, ?)").bind(orgId, domain, JSON.stringify({...contact, privacy, duration}), now).run(); } catch {}
+  try { recordAuditEvent(c.env as any, orgId, { action:"domain.buy.stripe_intent", target:domain, actor:member.email }); } catch {}
   return c.redirect(session.url, 303);
 });
 
