@@ -8,12 +8,12 @@ const app = document.querySelector("#app");
 function render() {
   app.innerHTML = `
     <nav class="site-nav site-nav--full">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__tabs">
-        <a href="search.html" class="site-nav__tab">Search</a>
-        <a href="history.html" class="site-nav__tab">History</a>
-        <a href="favorites.html" class="site-nav__tab">Favorites</a>
-        <a href="transfer.html" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
+        <a href="/search" class="site-nav__tab">Search</a>
+        <a href="/history" class="site-nav__tab">History</a>
+        <a href="/favorites" class="site-nav__tab">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
       </div>
       <div class="site-nav__links">
         <span data-auth-slot></span>
@@ -46,7 +46,7 @@ function bindEvents() {
   if (signOutBtn) signOutBtn.addEventListener("click", () => window.setTimeout(render, 0));
 
   const signInBtn = document.querySelector(".results-block .button--primary");
-  if (signInBtn && !isSignedIn()) signInBtn.addEventListener("click", () => { window.location.href = "signin.html"; });
+  if (signInBtn && !isSignedIn()) signInBtn.addEventListener("click", () => { window.location.href = "/signin"; });
 }
 
 render();

@@ -36,12 +36,12 @@ function validateDomainInput(value) {
 function render() {
   app.innerHTML = `
     <nav class="site-nav site-nav--full">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__tabs">
-        <a href="search.html" class="site-nav__tab">Search</a>
-        <a href="history.html" class="site-nav__tab">History</a>
-        <a href="favorites.html" class="site-nav__tab">Favorites</a>
-        <a href="transfer.html" class="site-nav__tab site-nav__tab--secondary is-active">Transfer a domain</a>
+        <a href="/search" class="site-nav__tab">Search</a>
+        <a href="/history" class="site-nav__tab">History</a>
+        <a href="/favorites" class="site-nav__tab">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary is-active">Transfer a domain</a>
       </div>
       <div class="site-nav__links">
         <span data-auth-slot></span>
@@ -384,7 +384,7 @@ function bindEvents() {
 
   if (step === "already-pending") {
     const [viewBtn, checkBtn] = document.querySelectorAll(".taken-domain__actions .button");
-    if (viewBtn) viewBtn.addEventListener("click", () => { window.location.href = `domains.html?d=${encodeURIComponent(domainInput)}`; });
+    if (viewBtn) viewBtn.addEventListener("click", () => { window.location.href = `/domains?d=${encodeURIComponent(domainInput)}`; });
     if (checkBtn) checkBtn.addEventListener("click", () => { resetFlow(); render(); });
   }
 
@@ -459,14 +459,14 @@ function bindEvents() {
 
   if (step === "success") {
     const buttons = document.querySelectorAll(".price-decision__actions .button");
-    buttons[0].addEventListener("click", () => { window.location.href = "domains.html"; });
-    buttons[1].addEventListener("click", () => { window.location.href = "search.html"; });
+    buttons[0].addEventListener("click", () => { window.location.href = "/domains"; });
+    buttons[1].addEventListener("click", () => { window.location.href = "/search"; });
   }
 
   if (step === "failed") {
     const buttons = document.querySelectorAll(".price-decision__actions .button");
     buttons[0].addEventListener("click", () => { step = "code"; render(); });
-    buttons[1].addEventListener("click", () => { window.location.href = "domains.html"; });
+    buttons[1].addEventListener("click", () => { window.location.href = "/domains"; });
   }
 }
 

@@ -4,15 +4,15 @@ import { checkDemoCredentials, setSignedIn } from "./state.js";
 const app = document.querySelector("#app");
 const mode = app.dataset.mode === "signup" ? "signup" : "signin";
 const isSignup = mode === "signup";
-const nextUrl = new URLSearchParams(window.location.search).get("next") || "index.html";
+const nextUrl = new URLSearchParams(window.location.search).get("next") || "/";
 
 function render() {
   app.innerHTML = `
     <nav class="site-nav">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__links">
-        <a href="index.html">Home</a>
-        <a href="${isSignup ? "signin.html" : "signup.html"}">${isSignup ? "Sign in" : "Create account"}</a>
+        <a href="/">Home</a>
+        <a href="${isSignup ? "/signin" : "/signup"}">${isSignup ? "Sign in" : "Create account"}</a>
       </div>
     </nav>
 
@@ -46,7 +46,7 @@ function render() {
 
       <p class="auth-switch">
         ${isSignup ? "Already have an account?" : "New to namenice?"}
-        <a href="${isSignup ? "signin.html" : "signup.html"}">${isSignup ? "Sign in" : "Create an account"}</a>
+        <a href="${isSignup ? "/signin" : "/signup"}">${isSignup ? "Sign in" : "Create an account"}</a>
       </p>
 
       <p class="auth-note" id="auth-status">This is a presentation demo \u2014 the only working login is the demo account above.</p>

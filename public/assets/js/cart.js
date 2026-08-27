@@ -16,17 +16,17 @@ function render() {
 
   app.innerHTML = `
     <nav class="site-nav site-nav--full">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__tabs">
-        <a href="search.html" class="site-nav__tab">Search</a>
-        <a href="history.html" class="site-nav__tab">History</a>
-        <a href="favorites.html" class="site-nav__tab">Favorites</a>
-        <a href="transfer.html" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
+        <a href="/search" class="site-nav__tab">Search</a>
+        <a href="/history" class="site-nav__tab">History</a>
+        <a href="/favorites" class="site-nav__tab">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
       </div>
       <div class="site-nav__links">
         <span data-auth-slot>
-          <a href="signin.html">Sign in</a>
-          <a href="signup.html">Create account</a>
+          <a href="/signin">Sign in</a>
+          <a href="/signup">Create account</a>
         </span>
         ${cartIcon({ count: 0 })}
       </div>
@@ -92,7 +92,7 @@ function render() {
 function bindEvents() {
   if (getCart().length === 0) {
     const searchBtn = document.querySelector(".results-block .button--primary");
-    if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "search.html"; });
+    if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "/search"; });
     return;
   }
 
@@ -113,11 +113,11 @@ function bindEvents() {
   const checkoutBtn = document.querySelector(".taken-domain__actions .button--primary");
   if (checkoutBtn && getCart().length > 0) {
     checkoutBtn.addEventListener("click", () => {
-      window.location.href = isSignedIn() ? "checkout.html" : "signup.html?next=cart.html";
+      window.location.href = isSignedIn() ? "/checkout" : "/signup?next=/cart";
     });
   }
   const signinBtn = document.querySelector(".taken-domain__actions .button--secondary");
-  if (signinBtn) signinBtn.addEventListener("click", () => { window.location.href = "signin.html?next=cart.html"; });
+  if (signinBtn) signinBtn.addEventListener("click", () => { window.location.href = "/signin?next=/cart"; });
 
   const signOutBtn = document.querySelector("#cart-page-signout");
   if (signOutBtn) signOutBtn.addEventListener("click", () => {

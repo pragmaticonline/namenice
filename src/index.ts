@@ -178,6 +178,13 @@ app.use("*", async (c, next) => {
   c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.namenice.net; frame-ancestors 'none'");
 });
 
+app.get("/:page{.*\.html}", (c) => {
+  const raw = c.req.path;
+  const q = new URL(c.req.url).search;
+  if (raw === "/index.html") return c.redirect("/" + q, 301);
+  return c.redirect(raw.replace(/\.html$/, "") + q, 301);
+});
+
 async function requireOrgMember(c: any, orgId: number): Promise<{ accountId:number; email:string; role:string } | null> {
   try {
     const origin = new URL(c.req.url).origin;

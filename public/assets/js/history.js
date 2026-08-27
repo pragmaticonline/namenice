@@ -10,17 +10,17 @@ function render() {
 
   app.innerHTML = `
     <nav class="site-nav site-nav--full">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__tabs">
-        <a href="search.html" class="site-nav__tab">Search</a>
-        <a href="history.html" class="site-nav__tab is-active">History</a>
-        <a href="favorites.html" class="site-nav__tab">Favorites</a>
-        <a href="transfer.html" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
+        <a href="/search" class="site-nav__tab">Search</a>
+        <a href="/history" class="site-nav__tab is-active">History</a>
+        <a href="/favorites" class="site-nav__tab">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
       </div>
       <div class="site-nav__links">
         <span data-auth-slot>
-          <a href="signin.html">Sign in</a>
-          <a href="signup.html">Create account</a>
+          <a href="/signin">Sign in</a>
+          <a href="/signup">Create account</a>
         </span>
         ${cartIcon({ count: 0 })}
       </div>
@@ -75,7 +75,7 @@ function renderHistoryRow(entry) {
   return `
     <div class="taken-domain" style="padding: var(--space-5) 0; border-top: var(--border-default);">
       <div class="taken-domain__header">
-        <strong><a href="search.html?q=${encodeURIComponent(entry.query)}" style="color:inherit;text-decoration:none;">${entry.query}</a></strong>
+        <strong><a href="/search?q=${encodeURIComponent(entry.query)}" style="color:inherit;text-decoration:none;">${entry.query}</a></strong>
         <span style="color:var(--color-text-secondary);font-size:13px;">${formatRelativeTime(entry.at)}</span>
       </div>
     </div>
@@ -87,13 +87,13 @@ function bindEvents() {
   const jumpSubmit = document.querySelector("#jump-search-submit");
   const goToSearch = () => {
     const q = jumpInput.value.trim();
-    window.location.href = q ? `search.html?q=${encodeURIComponent(q)}` : "search.html";
+    window.location.href = q ? `/search?q=${encodeURIComponent(q)}` : "/search";
   };
   jumpSubmit.addEventListener("click", goToSearch);
   jumpInput.addEventListener("keydown", (event) => { if (event.key === "Enter") goToSearch(); });
 
   const searchBtn = document.querySelector(".results-block .button--primary");
-  if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "search.html"; });
+  if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "/search"; });
 
   const clearBtn = document.querySelector("#clear-history");
   if (clearBtn) clearBtn.addEventListener("click", () => {
@@ -121,7 +121,7 @@ function bindEvents() {
 
   document.querySelectorAll('[data-domain][data-action="View"], [data-domain][data-action="See options"]').forEach((btn) => {
     btn.addEventListener("click", () => {
-      window.location.href = `search.html?q=${encodeURIComponent(btn.dataset.domain.split(".")[0])}`;
+      window.location.href = `/search?q=${encodeURIComponent(btn.dataset.domain.split(".")[0])}`;
     });
   });
 }

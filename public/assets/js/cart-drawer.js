@@ -203,7 +203,7 @@ function bindDrawerEvents() {
   if (closeBtn) closeBtn.addEventListener("click", closeCartDrawer);
 
   const searchBtn = panel.querySelector(".cart-drawer__empty .button--primary");
-  if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "search.html"; });
+  if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "/search"; });
 
   panel.querySelectorAll("[data-toggle-domain]").forEach((row) => {
     row.addEventListener("click", () => {
@@ -232,7 +232,7 @@ function bindDrawerEvents() {
 
   const checkoutBtn = panel.querySelector(".cart-drawer__actions .button--primary");
   if (checkoutBtn && isSignedIn()) {
-    checkoutBtn.addEventListener("click", () => { window.location.href = "checkout.html"; });
+    checkoutBtn.addEventListener("click", () => { window.location.href = "/checkout"; });
   } else if (checkoutBtn) {
     checkoutBtn.addEventListener("click", () => { authMode = "signup"; renderDrawer(); });
   }

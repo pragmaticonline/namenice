@@ -34,15 +34,15 @@ function render() {
     <nav class="site-nav site-nav--full">
       <a href="#" class="wordmark">${wordmark()}</a>
       <div class="site-nav__tabs">
-        <a href="search.html" class="site-nav__tab">Search</a>
-        <a href="history.html" class="site-nav__tab">History</a>
-        <a href="favorites.html" class="site-nav__tab">Favorites</a>
-        <a href="transfer.html" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
+        <a href="/search" class="site-nav__tab">Search</a>
+        <a href="/history" class="site-nav__tab">History</a>
+        <a href="/favorites" class="site-nav__tab">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
       </div>
       <div class="site-nav__links">
         <span data-auth-slot>
-          <a href="signin.html">Sign in</a>
-          <a href="signup.html">Create account</a>
+          <a href="/signin">Sign in</a>
+          <a href="/signup">Create account</a>
         </span>
         ${cartIcon({ count: 0 })}
       </div>
@@ -64,7 +64,7 @@ function render() {
     <div class="hero-search-overlap">
       ${domainSearch({ query, state: searchState, result, suggestions })}
     </div>
-    <p class="taken-domain__dates" style="text-align:center; margin: var(--space-4) 0 0;">Already own a domain? <a class="text-action" href="transfer.html">Transfer it to namenice \u2192</a></p>
+    <p class="taken-domain__dates" style="text-align:center; margin: var(--space-4) 0 0;">Already own a domain? <a class="text-action" href="/transfer">Transfer it to namenice \u2192</a></p>
 
     <section class="section section--after-hero">
       <p class="section__eyebrow">Why namenice</p>
@@ -143,7 +143,7 @@ function render() {
     <footer class="site-footer">
       <a href="#" class="wordmark">${wordmark()}</a>
       <div class="site-footer__text">
-        <p>Domains, without the noise. \u00b7 <a href="transfer.html" style="color:inherit;">Transfer a domain</a></p>
+        <p>Domains, without the noise. \u00b7 <a href="/transfer" style="color:inherit;">Transfer a domain</a></p>
         <p class="site-footer__copyright">\u00a9 2026 namenice. All rights reserved.</p>
       </div>
     </footer>
@@ -164,7 +164,7 @@ function bindEvents() {
     window.setTimeout(() => { searchState = "available"; render(); }, 650);
   });
   document.querySelector(".final-cta .button--primary").addEventListener("click", () => {
-    window.location.href = "signup.html";
+    window.location.href = "/signup";
   });
 }
 

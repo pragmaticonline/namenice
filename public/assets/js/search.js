@@ -47,17 +47,17 @@ function render() {
 
   app.innerHTML = `
     <nav class="site-nav site-nav--full">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__tabs">
-        <a href="search.html" class="site-nav__tab is-active">Search</a>
-        <a href="history.html" class="site-nav__tab">History</a>
-        <a href="favorites.html" class="site-nav__tab">Favorites</a>
-        <a href="transfer.html" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
+        <a href="/search" class="site-nav__tab is-active">Search</a>
+        <a href="/history" class="site-nav__tab">History</a>
+        <a href="/favorites" class="site-nav__tab">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
       </div>
       <div class="site-nav__links">
         <span data-auth-slot>
-          <a href="signin.html">Sign in</a>
-          <a href="signup.html">Create account</a>
+          <a href="/signin">Sign in</a>
+          <a href="/signup">Create account</a>
         </span>
         ${cartIcon({ count: 0 })}
       </div>
@@ -81,9 +81,9 @@ function render() {
         <div class="recent-searches">
           <p class="recent-searches__label">Recent searches</p>
           <ul>
-            ${history.map((entry) => `<li><a href="search.html?q=${encodeURIComponent(entry.query)}">${entry.query}</a></li>`).join("")}
+            ${history.map((entry) => `<li><a href="/search?q=${encodeURIComponent(entry.query)}">${entry.query}</a></li>`).join("")}
           </ul>
-          <a class="text-action" href="history.html">View all history \u2192</a>
+          <a class="text-action" href="/history">View all history \u2192</a>
         </div>` : ""}
       </div>
     </section>
@@ -169,7 +169,7 @@ function render() {
             <p class="name-suggestions__label">${group.label}</p>
             ${group.names.map((domain) => `
               <div class="name-suggestions__row">
-                <a href="search.html?q=${encodeURIComponent(splitDomain(domain).name)}">${domain}</a>
+                <a href="/search?q=${encodeURIComponent(splitDomain(domain).name)}">${domain}</a>
                 <button type="button" class="compare-table__favorite" data-favorite-domain="${domain}" aria-pressed="${isFavorited(domain)}" aria-label="${isFavorited(domain) ? "Remove" : "Add"} ${domain} from favorites">${favoriteHeartIcon(isFavorited(domain))}</button>
               </div>
             `).join("")}

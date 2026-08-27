@@ -20,12 +20,12 @@ function render() {
 
   app.innerHTML = `
     <nav class="site-nav site-nav--full">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__tabs">
-        <a href="search.html" class="site-nav__tab">Search</a>
-        <a href="history.html" class="site-nav__tab">History</a>
-        <a href="favorites.html" class="site-nav__tab">Favorites</a>
-        <a href="transfer.html" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
+        <a href="/search" class="site-nav__tab">Search</a>
+        <a href="/history" class="site-nav__tab">History</a>
+        <a href="/favorites" class="site-nav__tab">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary">Transfer a domain</a>
       </div>
       <div class="site-nav__links">
         <span data-auth-slot></span>
@@ -47,7 +47,7 @@ function renderList(domains, transfers) {
     <section class="search-toolbar">
       <div style="display:flex; align-items:center; justify-content:space-between; gap: var(--space-4); flex-wrap:wrap;">
         <h1 class="search-toolbar__heading" style="margin-bottom:0;">My Domains</h1>
-        <a href="transfer.html" class="button button--secondary" style="white-space:nowrap;">Transfer a domain</a>
+        <a href="/transfer" class="button button--secondary" style="white-space:nowrap;">Transfer a domain</a>
       </div>
     </section>
     <section class="results-block">
@@ -63,7 +63,7 @@ function renderList(domains, transfers) {
                 <span class="status-badge status-badge--premium">\u25cf Transfer pending</span>
               </div>
               <p class="taken-domain__dates">Started ${formatDate(t.startedAt)}</p>
-              <a class="text-action" href="domains.html?d=${encodeURIComponent(t.domain)}">View transfer \u2192</a>
+              <a class="text-action" href="/domains?d=${encodeURIComponent(t.domain)}">View transfer \u2192</a>
             </div>
           `).join("")}
           ${domains.map((d) => `
@@ -73,7 +73,7 @@ function renderList(domains, transfers) {
                 <span class="status-badge status-badge--available">\u25cf Active</span>
               </div>
               <p class="taken-domain__dates">${d.bundleLabel} \u00b7 Expires ${formatDate(d.expiresAt)} \u00b7 Auto-renew ${d.autoRenew ? "On" : "Off"}</p>
-              <a class="text-action" href="domains.html?d=${encodeURIComponent(d.domain)}">Manage \u2192</a>
+              <a class="text-action" href="/domains?d=${encodeURIComponent(d.domain)}">Manage \u2192</a>
             </div>
           `).join("")}
         </div>
@@ -92,7 +92,7 @@ function renderDetail(domain) {
   ];
   return `
     <section class="search-toolbar">
-      <a class="text-action" href="domains.html">\u2190 My Domains</a>
+      <a class="text-action" href="/domains">\u2190 My Domains</a>
       <h1 class="search-toolbar__heading" style="margin-top: var(--space-3);">${domain.domain}</h1>
       <div style="margin: var(--space-2) 0 var(--space-4);"><span class="status-badge status-badge--available">\u25cf Active</span></div>
       <div class="checkout-steps">
@@ -202,7 +202,7 @@ function renderTransferDetail(t) {
   const timelineSteps = ["Transfer started", "Authorization verified", "Current registrar processes transfer", "Transfer completed"];
   return `
     <section class="search-toolbar">
-      <a class="text-action" href="domains.html">\u2190 My Domains</a>
+      <a class="text-action" href="/domains">\u2190 My Domains</a>
       <h1 class="search-toolbar__heading" style="margin-top: var(--space-3);">${t.domain}</h1>
       <div style="margin: var(--space-2) 0 var(--space-4);"><span class="status-badge status-badge--premium">\u25cf Transfer pending</span></div>
     </section>
@@ -228,19 +228,19 @@ function renderTransferDetail(t) {
 function bindEvents(current, currentTransfer) {
   document.querySelectorAll("[data-open-domain]").forEach((row) => {
     row.addEventListener("click", () => {
-      window.location.href = `domains.html?d=${encodeURIComponent(row.dataset.openDomain)}`;
+      window.location.href = `/domains?d=${encodeURIComponent(row.dataset.openDomain)}`;
     });
   });
 
   document.querySelectorAll("[data-open-transfer]").forEach((row) => {
     row.addEventListener("click", () => {
-      window.location.href = `domains.html?d=${encodeURIComponent(row.dataset.openTransfer)}`;
+      window.location.href = `/domains?d=${encodeURIComponent(row.dataset.openTransfer)}`;
     });
   });
 
   const emptyBtn = document.querySelector(".results-block .button--primary");
   if (!current && !currentTransfer && emptyBtn) {
-    emptyBtn.addEventListener("click", () => { window.location.href = "search.html"; });
+    emptyBtn.addEventListener("click", () => { window.location.href = "/search"; });
   }
 
   if (!current) return;

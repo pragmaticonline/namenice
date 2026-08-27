@@ -27,9 +27,9 @@ function render() {
 
   app.innerHTML = `
     <nav class="site-nav">
-      <a href="index.html" class="wordmark">${wordmark()}</a>
+      <a href="/" class="wordmark">${wordmark()}</a>
       <div class="site-nav__links">
-        <a href="cart.html">Back to cart</a>
+        <a href="/cart">Back to cart</a>
         <span data-auth-slot></span>
         ${cartIcon({ count: 0 })}
       </div>
@@ -221,14 +221,14 @@ function renderSuccess() {
 function bindEvents(items) {
   const emptySearchBtn = document.querySelector(".results-block .button--primary");
   if (step !== "success" && items.length === 0 && emptySearchBtn) {
-    emptySearchBtn.addEventListener("click", () => { window.location.href = "search.html"; });
+    emptySearchBtn.addEventListener("click", () => { window.location.href = "/search"; });
     return;
   }
 
   if (step === "success") {
     document.querySelectorAll(".price-decision__actions .button").forEach((btn, i) => {
       btn.addEventListener("click", () => {
-        window.location.href = i === 0 ? `domains.html?d=${encodeURIComponent(completedOrder.domain)}` : "search.html";
+        window.location.href = i === 0 ? `/domains?d=${encodeURIComponent(completedOrder.domain)}` : "/search";
       });
     });
     return;

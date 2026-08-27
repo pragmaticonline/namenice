@@ -21,11 +21,11 @@ export function authNavLinks(signedIn) {
   if (signedIn) {
     return `<button type="button" class="site-nav__account-trigger" data-account-trigger aria-haspopup="true" aria-expanded="false">Account <span aria-hidden="true">\u2304</span></button>`;
   }
-  return `<a href="signin.html">Sign in</a><a href="signup.html">Create account</a>`;
+  return `<a href="/signin">Sign in</a><a href="/signup">Create account</a>`;
 }
 
 export function cartIcon({ count = 0 } = {}) {
-  return `<a href="cart.html" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">
+  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
       <circle cx="7.5" cy="17.5" r="1" fill="currentColor"/>
