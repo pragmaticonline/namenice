@@ -295,7 +295,20 @@ app.get("/", async (c) => {
           <h1 class="hero__headline">Find a name<br />worth <mark class="hero__accent">owning</mark>.</h1>
           <p class="hero__subhead">Search. Check. Register. Your next domain in minutes.</p>
         </div>
-        <div class="hero__mark" aria-hidden="true"><span class="hero__tld">.net</span></div>
+        <div class="hero__mark">
+        <div class="hero__popular">
+          <p class="hero__popular-label">Popular — available now</p>
+          <ul class="hero__popular-list">
+            <li><a href="/search?q=shop">shop.net <span>— $12.99</span></a><span class="status-badge status-badge--available">● Available</span></li>
+            <li><a href="/search?q=blog">blog.net <span>— $12.99</span></a><span class="status-badge status-badge--available">● Available</span></li>
+            <li><a href="/search?q=ai">ai.net <span>— $12.99</span></a><span class="status-badge status-badge--available">● Available</span></li>
+            <li><a href="/search?q=app">app.net <span>— $12.99</span></a><span class="status-badge status-badge--available">● Available</span></li>
+            <li><a href="/search?q=home">home.net <span>— $12.99</span></a><span class="status-badge status-badge--available">● Available</span></li>
+            <li><a href="/search?q=studio">studio.net <span>— $12.99</span></a><span class="status-badge status-badge--available">● Available</span></li>
+          </ul>
+          <p class="hero__popular-note">Live .net pricing via Dynadot — renewal $18.99/yr. Tap a name to check its exact status.</p>
+        </div>
+      </div>
       </div>
     </header>
     <div class="hero-search-overlap">

@@ -47,6 +47,19 @@
 .hero__tld { position: relative; font: 400 clamp(48px, 6vw, 80px) / 1 var(--font-display); color: var(--color-brand-expression); }
 .hero__tld::after { content: ""; position: absolute; left: 2%; right: 6%; bottom: -.14em; height: 5px; background: var(--color-brand-expression); border-radius: 3px; transform: rotate(-1.5deg); }
 
+.hero__popular { width: 100%; max-width: 360px; background: rgba(255,253,248,0.06); border: 1px solid rgba(255,253,248,0.14); border-radius: var(--radius-search); padding: var(--space-6); backdrop-filter: blur(8px); }
+.hero__popular-label { margin: 0 0 var(--space-4); color: var(--color-brand-expression); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.hero__popular-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.hero__popular-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid rgba(255,253,248,0.08); }
+.hero__popular-list li:last-child { border-bottom: 0; }
+.hero__popular-list a { color: var(--color-surface-raised); text-decoration: none; font-family: var(--font-display); font-size: 15px; font-weight: 500; letter-spacing: -.01em; }
+.hero__popular-list a:hover { color: var(--color-brand-expression); text-decoration: underline; text-underline-offset: 3px; }
+.hero__popular-list a span { color: var(--color-border-subtle); font-family: var(--font-ui); font-size: 11px; font-weight: 400; margin-left: 6px; }
+.hero__popular-note { margin: var(--space-4) 0 0; color: rgba(255,253,248,0.6); font-size: 11px; line-height: 1.5; }
+.hero__popular .status-badge { font-size: 10px; padding: 2px 6px; }
+.hero__popular .status-badge--available { background: rgba(232,243,74,0.18); color: var(--color-brand-expression); border: 1px solid rgba(232,243,74,0.3); }
+
+
 .hero-search-overlap { position: relative; z-index: 2; max-width: 760px; margin: -44px auto var(--space-9); padding: 0 var(--space-5); }
 .hero-search-overlap .signature-search__frame { box-shadow: var(--shadow-overlay); }
 
@@ -124,7 +137,8 @@
   .hero { min-height: 0; background: var(--color-surface-dark); }
   .hero__diagonal { display: none; }
   .hero__grid { grid-template-columns: 1fr; min-height: 0; }
-  .hero__mark { display: none; }
+  .hero__mark { display: flex; align-items: center; justify-content: center; padding: var(--space-6) var(--space-5); }
+  .hero__popular { max-width: none; background: rgba(255,253,248,0.05); }
   .hero__copy { padding: var(--space-8) var(--space-5) var(--space-9); }
   .hero__eyebrow { color: var(--color-brand-expression); }
   .hero__headline { color: var(--color-surface-raised); max-width: none; }
