@@ -300,7 +300,7 @@ app.get("/", async (c) => {
     </header>
     <div class="hero-search-overlap">
       <section class="signature-search" data-search-state="initial">
-        <form method="get" action="/search" class="signature-search__frame" style="flex:1">
+        <form method="get" action="/search" class="signature-search__frame" style="flex:1" onsubmit="const v=this.querySelector('input[name=q]').value.trim(); if(!v){event.preventDefault(); this.querySelector('input[name=q]').focus(); return false;}">
           <label class="sr-only" for="domain-search-input">Search for a domain</label>
           <span class="signature-search__icon" aria-hidden="true">\u2315</span>
           <input id="domain-search-input" name="q" class="signature-search__input" placeholder="namenice" aria-describedby="search-helper" value="" />
@@ -326,7 +326,7 @@ app.get("/", async (c) => {
       <p class="section__eyebrow">Pricing</p>
       <h2 class="section__heading">Know what you\u2019ll pay.</h2>
       <div class="price-decision">
-        <div class="price-decision__domain"><span class="domain-result__selected-marker" aria-hidden="true">\u2713</span><span class="price-decision__name">namenice.net</span></div>
+        <div class="price-decision__domain"><span class="domain-result__selected-marker" aria-hidden="true">\u2713</span><span class="price-decision__name">namenice.net</span> <span class="muted" style="font-size:12px; margin-left:8px;">— example</span></div>
         <div class="price-decision__row"><div><p class="price-decision__label">Registration</p><p class="price-decision__amount">$12.99<span>/ first year</span></p></div><div><p class="price-decision__label">Renewal</p><p class="price-decision__amount price-decision__amount--muted">$18.99<span>/ year</span></p></div></div>
         <p class="price-decision__terms">Renewal is $18.99/yr after the first year. Shown before you add to cart, so there are no surprises in year two.</p>
         <div class="price-decision__actions"><a class="button button--primary" href="/search?q=namenice">Check namenice.net \u2192</a><a class="text-action" href="/search">See more options</a></div>
@@ -363,6 +363,8 @@ app.get("/", async (c) => {
     </section>
     <section class="section final-cta"><h2 class="final-cta__headline">A good name shouldn\u2019t be hard to own.</h2><a class="button button--primary" href="/search">Search your domain \u2192</a></section>
   `;
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate");
+  c.header("CDN-Cache-Control", "no-store");
   return c.html(shell("Namenice — modern DNS + domains", homepageBody, { user, activeTab: "" }));
 });
 
@@ -494,6 +496,9 @@ app.get("/search", async (c) => {
       });
     </script>
   `;
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate");
+  c.header("CDN-Cache-Control", "no-store");
+  c.header("Vary", "Accept-Encoding, Cookie");
   return c.html(shell("Search — Namenice", searchBody, { user, activeTab: "search" }));
 });
 
