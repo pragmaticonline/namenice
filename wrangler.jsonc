@@ -10,6 +10,10 @@
     "ROOT_DOMAIN": "namenice.net",
     "CNAME_TARGET": "fallback.blognice.com"
   },
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "none"
+  },
   "routes": [
     {
       "pattern": "namenice.net/*",

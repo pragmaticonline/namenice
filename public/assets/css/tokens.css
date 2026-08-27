@@ -1,0 +1,45 @@
+:root {
+  --color-surface-primary: #f0f2e9;
+  --color-surface-raised: #fffdf8;
+  --color-surface-dark: #101312;
+  --color-text-primary: #162018;
+  --color-text-secondary: #53615b;
+  --color-border-subtle: #cbd7d1;
+  --color-border-strong: #8d9a92;
+  --color-brand-expression: #e8f34a;
+  --color-brand-expression-surface: #fcfce0; /* restrained lime tint, for selected-state surfaces */
+  --color-action-primary: #ff6b2c;
+  --color-action-primary-hover: #eb6228; /* darkened only enough to keep Ink CTA text >= 4.5:1 */
+  --color-action-primary-pressed: #e35f27; /* darkened only enough to keep Ink CTA text >= 4.5:1 */
+  --color-interaction: #006d62;
+  --color-interaction-hover: #00564d;
+  --color-interaction-surface: #e6efe9; /* light teal tint for interaction/hover surfaces, distinct from brand-expression-surface */
+  --color-status-success: #207a4b;
+  --color-status-success-surface: #e6f3e9;
+  --color-status-warning: #a56100;
+  --color-status-warning-surface: #f7edda;
+  --color-status-error: #b42318;
+  --color-status-error-surface: #f8e7e4;
+  --font-display: "Newsreader", "Noto Serif Thai", Georgia, serif;
+  --font-ui: "IBM Plex Sans", "IBM Plex Sans Thai", Arial, sans-serif;
+  --font-thai-display: "Noto Serif Thai", Georgia, serif;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+  --radius-subtle: 4px;
+  --radius-control: 8px;
+  --radius-search: 12px;
+  --border-default: 1px solid var(--color-border-subtle);
+  --border-focus: 2px solid var(--color-interaction);
+  --shadow-overlay: 0 16px 38px rgb(16 19 18 / 16%);
+  --duration-fast: 120ms;
+  --duration-standard: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}

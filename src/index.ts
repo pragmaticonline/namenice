@@ -6,9 +6,75 @@ import { can, createAuth } from "./auth.ts";
 import { listDns, addDns, removeDns, DNS_TYPES } from "./dns.ts";
 import { dynadotConfigured, getDynadotBaseUrl, searchDomain, isSandboxEnabled, createContact, registerDomain } from "./dynadot.ts";
 
+
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
+
+function wordmarkHtml(): string {
+  return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
+}
+
+function cartIconHtml(count = 0): string {
+  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="7.5" cy="17.5" r="1" fill="currentColor"/>
+      <circle cx="14" cy="17.5" r="1" fill="currentColor"/>
+    </svg>
+    ${count > 0 ? `<span class="cart-icon__count">${count}</span>` : ""}
+  </a>`;
+}
+
+function statusBadgeHtml(status: string): string {
+  const copy: Record<string,string> = { available: "Available", unavailable: "Unavailable", premium: "Premium domain" };
+  return `<span class="status-badge status-badge--${status}"><span aria-hidden="true">\u25CF</span> ${copy[status] || status}</span>`;
+}
+
+function shell(title: string, body: string, opts?: { user?: { email:string } | null; orgId?: number; activeTab?: string; headExtra?: string }): string {
+  const user = opts?.user ?? null;
+  const org = opts?.orgId ?? 1;
+  const active = opts?.activeTab || "";
+  const isActive = (t:string) => active === t ? " is-active" : "";
+  const navTabs = `<div class="site-nav__tabs">
+        <a href="/search" class="site-nav__tab${isActive("search")}">Search</a>
+        <a href="/history" class="site-nav__tab${isActive("history")}">History</a>
+        <a href="/favorites" class="site-nav__tab${isActive("favorites")}">Favorites</a>
+        <a href="/transfer" class="site-nav__tab site-nav__tab--secondary${isActive("transfer")}">Transfer a domain</a>
+      </div>`;
+  const authSlot = user
+    ? `<button type="button" class="site-nav__account-trigger" data-account-trigger aria-haspopup="true" aria-expanded="false">Account <span aria-hidden="true">\u2304</span></button>`
+    : `<span data-auth-slot><a href="/signin">Sign in</a><a href="/signup">Create account</a></span>`;
+  const nav = `<nav class="site-nav site-nav--full">
+      <a href="/" class="wordmark">${wordmarkHtml()}</a>
+      ${navTabs}
+      <div class="site-nav__links">
+        ${authSlot}
+        ${cartIconHtml()}
+      </div>
+    </nav>`;
+  const accountMenuUser = user ? esc(user.email) : "namenice";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+Thai:wght@400;500&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice \u2014 find a name worth owning. .net only. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
+import { initCartDrawer } from "/assets/js/cart-drawer.js";
+import { initAccountMenu } from "/assets/js/account-menu.js";
+try { initCartDrawer(); } catch(e) { console.warn(e); }
+try { initAccountMenu(); } catch(e) {}
+// Update auth slot for demo localStorage — real auth via server session
+try {
+  const isDemoSignedIn = localStorage.getItem("namenice_signed_in_demo") === "true";
+  if (isDemoSignedIn && !document.querySelector("[data-account-trigger]")) {
+    const slot = document.querySelector("[data-auth-slot]");
+    if (slot) slot.innerHTML = '<button type="button" class="site-nav__account-trigger" data-account-trigger aria-haspopup="true" aria-expanded="false">Account <span aria-hidden="true">\u2304</span></button>';
+  }
+} catch {}
+</script></body></html>`;
+}
+
+function shellSimple(title: string, body: string, opts?: { user?: { email:string } | null; orgId?: number }): string {
+  const user = opts?.user ?? null;
+  return shell(title, body, { user, orgId: opts?.orgId, activeTab: "" });
+}
+
 
 type Bindings = MetricsEnv & BalanceEnv & {
   DB: D1Database;
@@ -87,8 +153,9 @@ async function requireExplicitOrg(c: any, email: string): Promise<{ orgId: numbe
 }
 
 app.use("*", async (c, next) => {
-  const host = (c.req.header("host") || new URL(c.req.url).host).split(":")[0];
-  if (host === "namenice.net") {
+  const rawHost = c.req.header("host") || new URL(c.req.url).host;
+  const host = rawHost.split(":")[0].toLowerCase();
+  if (host === "namenice.net" && !rawHost.includes("127.0.0.1") && !rawHost.includes("localhost") && !new URL(c.req.url).hostname.includes("127.0.0.1")) {
     const url = new URL(c.req.url);
     url.hostname = "www.namenice.net";
     url.protocol = "https:";
@@ -103,7 +170,7 @@ app.use("*", async (c, next) => {
   c.header("X-Frame-Options", "DENY");
   c.header("Referrer-Policy", "strict-origin-when-cross-origin");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://www.namenice.net; frame-ancestors 'none'");
+  c.header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.namenice.net; frame-ancestors 'none'");
 });
 
 async function requireOrgMember(c: any, orgId: number): Promise<{ accountId:number; email:string; role:string } | null> {
@@ -134,34 +201,521 @@ async function getSessionUser(c: any): Promise<{ email:string; name?:string } | 
   return null;
 }
 
-function shell(title: string, body: string, opts?: { user?: { email:string } | null; orgId?: number }): string {
-  const user = opts?.user ?? null;
-  const org = opts?.orgId ?? 1;
-  const nav = user
-    ? `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn style="background:#fff;color:#111" href="/domains?org=${org}">Domains</a><a class=btn style="background:#fff;color:#111" href="/billing?org=${org}">Billing</a><a class=btn style="background:#fff;color:#111" href="/audit?org=${org}">Audit</a><span class=muted style="align-self:center;font-size:.85rem">${esc(user.email)}</span><a class=btn style="background:#fff;color:#111" href="/signout">Sign out</a>`
-    : `<a class=btn style="background:#fff;color:#111" href="/">Home</a><a class=btn href="/signin">Sign in</a><a class=btn style="background:#fff;color:#111" href="/signin">Create account</a>`;
-  return `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem} .card{border:1px solid #e6e6e6;border-radius:12px;padding:1rem;margin:.8rem 0;background:#fafaf9} .btn{padding:.6rem 1rem;border-radius:999px;background:#111;color:#fff;border:1px solid #111} .muted{color:#6b6b6b} table{width:100%;border-collapse:collapse} th{color:#6b6b6b;text-align:left;border-bottom:1px solid #e6e6e6;padding:.4rem} td{padding:.5rem .3rem;border-bottom:1px solid #f0f0f0} input,select{padding:.6rem;border:1px solid #e6e6e6;border-radius:8px} .badge{font-size:.75rem;padding:.2rem .5rem;border-radius:999px;background:#1a8917;color:#fff}</style></head><body><h1 style="letter-spacing:-.03em">name<span style="color:#1a8917">nice</span> <span class=muted style="font-weight:400;font-size:.9rem">· modern DNS + domains</span></h1><nav style="display:flex;gap:.6rem;margin:.6rem 0;flex-wrap:wrap;align-items:center">${nav}</nav>${body}</body></html>`;
+
+function signinPage(mode: "signin" | "signup" = "signin"): string {
+  const isSignup = mode === "signup";
+  const title = isSignup ? "Create your account" : "Sign in to namenice";
+  const lede = isSignup
+    ? "Search stays free forever. An account is only needed for buying, DNS, and billing."
+    : "Welcome back \u2014 sign in to manage your domains.";
+  const btnLabel = isSignup ? "Create account" : "Sign in";
+  const switchText = isSignup ? "Already have an account?" : "New to namenice?";
+  const switchHref = isSignup ? "/signin" : "/signup";
+  const switchLabel = isSignup ? "Sign in" : "Create an account";
+  const authForm = `<section class="auth-panel">
+      <h1 class="auth-panel__heading">${title}</h1>
+      <p class="auth-panel__lede">${lede}</p>
+      <p class="auth-panel__lede" style="margin-top:-8px;">Demo login for local preview: <code>namenice</code> / <code>1234</code> also works offline. Real auth via email+password or OAuth.</p>
+      <form class="auth-form" id="auth-form" novalidate>
+        <div class="field-group" id="auth-name-group" style="${isSignup ? "" : "display:none"}">
+          <label class="field-label" for="auth-name">Name</label>
+          <input class="field" type="text" id="auth-name" placeholder="Jane Doe" autocomplete="name" ${isSignup ? "required" : ""} />
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="auth-email">Email address</label>
+          <input class="field" type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="auth-password">Password</label>
+          <input class="field" type="password" id="auth-password" placeholder="Enter your password" autocomplete="${isSignup ? "new-password" : "current-password"}" required />
+          <p class="field-help" id="auth-error-help" style="color: var(--color-status-error);" hidden>Incorrect email or password.</p>
+        </div>
+        <button class="button button--primary" type="submit" id="auth-submit">${btnLabel}</button>
+      </form>
+      <div class="auth-divider">or continue with</div>
+      <div class="auth-oauth">
+        <a class="button button--secondary" href="/api/auth/sign-in/google">Google</a>
+        <a class="button button--secondary" href="/api/auth/sign-in/github">GitHub</a>
+      </div>
+      <p class="auth-switch">${switchText} <a href="${switchHref}">${switchLabel}</a></p>
+      <p class="auth-note" id="auth-status">Secure auth via Better Auth. Session cookie is HttpOnly.</p>
+    </section>`;
+  return authForm;
 }
 
-function signinPage(): string {
-  return `<div class=card><h2 style=margin:0>Sign in to Namenice</h2><p class=muted style=font-size:.9rem>Email + password via Better Auth. Or use Google/GitHub if configured.</p><div style="display:flex;gap:.5rem;margin:.8rem 0"><button class=btn id=tab-in style="background:#111;color:#fff">Sign in</button><button class=btn id=tab-up style="background:#fff;color:#111">Create account</button><a class=btn style="background:#fff;color:#111" href="/api/auth/sign-in/google">Google →</a><a class=btn style="background:#fff;color:#111" href="/api/auth/sign-in/github">GitHub →</a></div><form id=auth-form style="display:flex;flex-direction:column;gap:.6rem;max-width:360px"><input id=auth-name placeholder="Name (for sign-up)" style="display:none"><input id=auth-email type=email placeholder="you@example.com" required><input id=auth-password type=password placeholder="Password (8+ chars)" required><button class=btn type=submit id=auth-submit>Sign in →</button></form><div id=auth-msg class=muted style="font-size:.85rem;margin-top:.6rem"></div><p class=muted style="font-size:.82rem">API: <code>POST /api/auth/sign-in/email</code> / <code>POST /api/auth/sign-up/email</code> — session cookie <code>__Secure-better-auth.session_token</code> is set on success.</p></div><script>
-let mode='in';
-const tabIn=document.getElementById('tab-in'),tabUp=document.getElementById('tab-up'),nameEl=document.getElementById('auth-name'),emailEl=document.getElementById('auth-email'),passEl=document.getElementById('auth-password'),form=document.getElementById('auth-form'),msg=document.getElementById('auth-msg'),submit=document.getElementById('auth-submit');
-function syncMode(){if(mode==='in'){tabIn.style.background='#111';tabIn.style.color='#fff';tabUp.style.background='#fff';tabUp.style.color='#111';nameEl.style.display='none';submit.textContent='Sign in →';}else{tabUp.style.background='#111';tabUp.style.color='#fff';tabIn.style.background='#fff';tabIn.style.color='#111';nameEl.style.display='block';submit.textContent='Create account →';}msg.textContent='';}
-tabIn.onclick=()=>{mode='in';syncMode();};tabUp.onclick=()=>{mode='up';syncMode();};syncMode();
-form.onsubmit=async(e)=>{e.preventDefault();msg.textContent='…';submit.disabled=true;try{const url=mode==='in'?'/api/auth/sign-in/email':'/api/auth/sign-up/email';const body=mode==='in'?{email:emailEl.value,password:passEl.value}:{email:emailEl.value,password:passEl.value,name:nameEl.value||emailEl.value.split('@')[0]};const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok){msg.textContent=j.message||j.error||'Failed: '+r.status;msg.style.color='#c00';}else{msg.textContent='Success — redirecting…';msg.style.color='#1a8917';location.href='/domains?org=1';}}catch(err){msg.textContent=String(err);msg.style.color='#c00';}finally{submit.disabled=false;}};
-<\/script>`;
+function authScript(): string {
+  return `<script type="module">
+const mode = document.querySelector(".auth-panel__heading")?.textContent?.includes("Create") ? "up" : "in";
+const nameEl = document.getElementById('auth-name');
+const emailEl = document.getElementById('auth-email');
+const passEl = document.getElementById('auth-password');
+const form = document.getElementById('auth-form');
+const msg = document.getElementById('auth-error-help');
+const status = document.getElementById('auth-status');
+const submit = document.getElementById('auth-submit');
+if (form) {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = emailEl.value.trim();
+    const password = passEl.value;
+    const name = nameEl ? nameEl.value.trim() : "";
+    if (!email || !password) { if(msg){msg.textContent='Email and password required'; msg.hidden=false;} return; }
+    if (submit) { submit.disabled=true; submit.textContent = mode==='up' ? 'Creating account\u2026' : 'Signing in\u2026'; }
+    try {
+      // Demo offline fallback check (matches UI prototype credentials)
+      if (email.toLowerCase()==='namenice' && password==='1234') {
+        try { localStorage.setItem('namenice_signed_in_demo','true'); } catch {}
+        status.textContent='Demo sign-in successful — redirecting\u2026'; status.style.color='var(--color-status-success)';
+        setTimeout(()=> location.href='/domains', 600);
+        return;
+      }
+      const url = mode==='up' ? '/api/auth/sign-up/email' : '/api/auth/sign-in/email';
+      const body = mode==='up' ? { email, password, name: name || email.split('@')[0] } : { email, password };
+      const r = await fetch(url, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok) { if(msg){msg.textContent=j.message||j.error||'Failed: '+r.status; msg.hidden=false; msg.style.color='var(--color-status-error)';} }
+      else { status.textContent='Success — redirecting\u2026'; status.style.color='var(--color-status-success)'; location.href='/domains'; }
+    } catch(err) { if(msg){msg.textContent=String(err); msg.hidden=false;} } finally { if(submit){submit.disabled=false; submit.textContent = mode==='up' ? 'Create account' : 'Sign in';} }
+  });
 }
+</script>`;
+}
+
+
 
 app.get("/", async (c) => {
   const user = await getSessionUser(c);
-  const publicSearch = `<div class=card><h2 style=margin:0>Find a name you love.</h2><p class=muted>Modern DNS + domains — fast, private, Stripe-powered top-ups.</p><form method=post action="/domains/search" style="display:flex;gap:.5rem;margin:1rem 0;flex-wrap:wrap" onsubmit="if(!document.cookie.includes('better-auth')){alert('Sign in to buy — you can still check availability');}"><input name=domain placeholder="example.com" required style="flex:1;min-width:240px;padding:.7rem" pattern="^.+\..+$" title="Enter a domain like example.com"><button class=btn>Check availability →</button></form><p class=muted style="font-size:.85rem">Search is public · buying, DNS & billing require an account. <a href="/signin">Sign in</a> to pay from balance ($5–$1000 top-ups) or Stripe Checkout.</p>${user ? `<p><a class=btn href="/domains?org=1">Go to your domains →</a></p>` : `<p><a class=btn href="/signin">Create account →</a> <a class=btn style="background:#fff;color:#111" href="/signin">Sign in</a></p>`}</div><div class=card><h3 style=margin:0>Why Namenice</h3><ul class=muted style="font-size:.9rem"><li>All record types A/AAAA/CNAME/MX/TXT/NS/SRV/CAA/ALIAS — TTL 60–86400</li><li>Import BIND zone file · bulk edit · URL forwarding 301/302</li><li>DNSSEC · vanity NS · WHOIS privacy · lock/unlock · auto-renew from balance</li><li>Teams: owner/admin/billing/viewer + 7-day invites + 90-day audit</li><li>API keys + webhooks + balance ledger — Stripe is only the processor</li></ul></div>`;
-  return c.html(shell("Namenice — modern DNS + domains", publicSearch, { user }));
+  const orgParam = c.req.query("org") ? `?org=${c.req.query("org")}` : "";
+  const homepageBody = `
+    <header class="hero">
+      <div class="hero__diagonal" aria-hidden="true"></div>
+      <div class="hero__grid">
+        <div class="hero__copy">
+          <p class="hero__eyebrow">namenice \u00B7 domains</p>
+          <h1 class="hero__headline">Find a name<br />worth <mark class="hero__accent">owning</mark>.</h1>
+          <p class="hero__subhead">Search. Check. Register. Your next domain in minutes.</p>
+        </div>
+        <div class="hero__mark" aria-hidden="true"><span class="hero__tld">.net</span></div>
+      </div>
+    </header>
+    <div class="hero-search-overlap">
+      <section class="signature-search" data-search-state="initial">
+        <form method="get" action="/search" class="signature-search__frame" style="flex:1">
+          <label class="sr-only" for="domain-search-input">Search for a domain</label>
+          <span class="signature-search__icon" aria-hidden="true">\u2315</span>
+          <input id="domain-search-input" name="q" class="signature-search__input" placeholder="namenice" aria-describedby="search-helper" value="" />
+          <span class="signature-search__tld">.net</span>
+          <button class="signature-search__submit" type="submit">Check availability</button>
+        </form>
+        <p id="search-helper" class="signature-search__helper">Search is free. Create an account when you\u2019re ready.</p>
+      </section>
+    </div>
+    <p class="taken-domain__dates" style="text-align:center; margin: var(--space-4) 0 0;">Already own a domain? <a class="text-action" href="/transfer">Transfer it to namenice \u2192</a></p>
+    <section class="section section--after-hero">
+      <p class="section__eyebrow">Why namenice</p>
+      <h2 class="section__heading">A domain is a small commitment. It shouldn\u2019t feel like a big risk.</h2>
+      <div class="value-list">
+        <div class="value-row"><h3>Own it, plainly</h3><p>The domain is registered to you, in your account, with a straightforward path to move or transfer it whenever you need to.</p></div>
+        <div class="value-row"><h3>Pricing you can see</h3><p>The price you check is the price you pay. Renewal costs are shown up front, not buried until the year it renews.</p></div>
+        <div class="value-row"><h3>DNS that doesn\u2019t fight you</h3><p>Add a record, save it, done. No hunting through nested menus to point a domain at your site.</p></div>
+        <div class="value-row"><h3>Control over what matters</h3><p>Share access with a team without sharing the whole account \u2014 owner, admin, billing, and viewer each see only what they need.</p></div>
+        <div class="value-row"><h3>Renewal, handled simply</h3><p>Turn on auto-renew and stop thinking about it, or manage it manually if you\u2019d rather decide each year yourself.</p></div>
+      </div>
+    </section>
+    <section class="section">
+      <p class="section__eyebrow">Pricing</p>
+      <h2 class="section__heading">Know what you\u2019ll pay.</h2>
+      <div class="price-decision">
+        <div class="price-decision__domain"><span class="domain-result__selected-marker" aria-hidden="true">\u2713</span><span class="price-decision__name">namenice.net</span></div>
+        <div class="price-decision__row"><div><p class="price-decision__label">Registration</p><p class="price-decision__amount">$12.99<span>/ first year</span></p></div><div><p class="price-decision__label">Renewal</p><p class="price-decision__amount price-decision__amount--muted">$18.99<span>/ year</span></p></div></div>
+        <p class="price-decision__terms">Renewal is $18.99/yr after the first year. Shown before you add to cart, so there are no surprises in year two.</p>
+        <div class="price-decision__actions"><a class="button button--primary" href="/search?q=namenice">Check namenice.net \u2192</a><a class="text-action" href="/search">See more options</a></div>
+      </div>
+    </section>
+    <section class="section section--dark">
+      <p class="section__eyebrow">Capability</p>
+      <h2 class="section__heading">DNS that keeps up, without getting in the way.</h2>
+      <div class="tech-panel"><p class="tech-panel__lede">Every record type you\u2019d expect, plus tools for importing a zone, forwarding a URL, or locking a domain down when it matters.</p>
+        <div class="tech-grid">
+          <div class="tech-item"><h4>Every record type</h4><p>A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, ALIAS \u2014 with TTLs from 60 seconds to a full day.</p></div>
+          <div class="tech-item"><h4>Zone tools</h4><p>Import a BIND zone file, bulk-edit records, or set up URL forwarding with 301 or 302 redirects.</p></div>
+          <div class="tech-item"><h4>Domain security</h4><p>DNSSEC, vanity nameservers, WHOIS privacy by default, and lock or unlock a domain when it matters.</p></div>
+          <div class="tech-item"><h4>Team access</h4><p>Owner, admin, billing, and viewer roles, with 7-day invite links and a 90-day audit trail.</p></div>
+          <div class="tech-item"><h4>Developer access</h4><p>API keys, webhooks, and a balance ledger \u2014 Stripe is only the processor, not the source of truth.</p></div>
+          <div class="tech-item"><h4>Auto-renewal</h4><p>Renew straight from your balance so an important name never lapses by accident.</p></div>
+        </div>
+      </div>
+    </section>
+    <section class="section">
+      <p class="section__eyebrow">Management</p>
+      <h2 class="section__heading">Keep your domains where you can see them.</h2>
+      <div class="management-preview"><p class="management-preview__lede">All your .net domains in one list, each with its own overview, DNS, renewal, and transfer controls.</p>
+        <div class="management-panel"><div class="management-panel__header"><h3>My Domains</h3><span class="status-badge status-badge--available">\u25CF Active</span></div>
+          <div class="row-group" style="padding: var(--space-5);">
+            <div class="cart-page-item" style="padding: var(--space-3) 0;">
+              <div class="cart-page-item__head"><strong>namenice.net</strong><span class="status-badge status-badge--available">\u25CF Active</span></div>
+              <p class="taken-domain__dates">Domain only \u00B7 Expires ${new Date(Date.now()+365*86400000).toLocaleDateString()} \u00B7 Auto-renew On</p>
+            </div>
+          </div>
+          <div class="management-actions"><a class="button button--primary" href="${user ? "/domains" + orgParam : "/signin"}">${user ? "Manage domains \u2192" : "Create account to manage \u2192"}</a><a class="text-action" href="/domains">View all</a></div>
+        </div>
+      </div>
+    </section>
+    <section class="section final-cta"><h2 class="final-cta__headline">A good name shouldn\u2019t be hard to own.</h2><a class="button button--primary" href="/search">Search your domain \u2192</a></section>
+  `;
+  return c.html(shell("Namenice — modern DNS + domains", homepageBody, { user, activeTab: "" }));
 });
 
-app.get("/signin", (c) => c.html(shell("Sign in — Namenice", signinPage())));
-app.get("/sign-in", (c) => c.html(shell("Sign in — Namenice", signinPage())));
+
+app.get("/signin", (c) => c.html(shell("Sign in — Namenice", signinPage("signin") + authScript(), { activeTab: "" })));
+app.get("/signup", (c) => c.html(shell("Create account — Namenice", signinPage("signup") + authScript(), { activeTab: "" })));
+app.get("/sign-in", (c) => c.redirect("/signin", 301));
 app.get("/login", (c) => c.redirect("/signin", 302));
+
+app.get("/search", async (c) => {
+  const user = await getSessionUser(c);
+  const q = (c.req.query("q") || c.req.query("query") || c.req.query("domain") || "").trim();
+  const orgId = Number(c.req.query("org") || 1);
+  let resultHtml = "";
+  let suggestionsHtml = "";
+  if (q) {
+    // Normalize to .net only per product rule
+    let domain = q.toLowerCase().trim();
+    if (!domain.includes(".")) domain = domain.replace(/[^a-z0-9-]/g,"") + ".net";
+    if (!domain.endsWith(".net")) domain = domain.split(".")[0] + ".net";
+    let available = false; let price: string | null = null; let raw: any = null;
+    let status: "available"|"unavailable"|"premium" = "unavailable";
+    if (dynadotConfigured(c.env as any)) {
+      try {
+        const r = await searchDomain(c.env as any, domain, { show_price: true });
+        raw = r.raw;
+        if (r.ok) {
+          const d = r.data as any;
+          available = !!d?.available || d?.status === "available" || d?.search_results?.[domain]?.available;
+          const pl = d?.priceList?.[0] || d?.price_list?.[0] || d?.search_results?.[domain]?.priceList?.[0];
+          if (pl?.registration_price) price = (Number(pl.registration_price)+2).toFixed(2);
+          else if (d?.price) price = (Number(d.price)+2).toFixed(2);
+          const isPremium = d?.premium || d?.search_results?.[domain]?.premium;
+          if (isPremium) status = "premium";
+          else status = available ? "available" : "unavailable";
+        }
+      } catch {}
+    } else {
+      available = domain.startsWith("namenice") || domain.length < 12;
+      price = available ? "12.99" : null;
+      status = available ? "available" : "unavailable";
+    }
+    const priceStr = price ? `$${price}` : "—";
+    const badge = statusBadgeHtml(status);
+    const msg = status === "available" ? "Ready when you are. Review the price before you continue."
+      : status === "premium" ? "Premium domains have a separate purchase price. Renewal details come next."
+      : "This name is already registered. Here are a few close options.";
+    const suggestions = status === "unavailable" ? [
+      { domain: `try${domain}`, price: "$12.99", cadence: "/ year", status: "available" },
+      { domain: `get${domain}`, price: "$12.99", cadence: "/ year", status: "available" },
+    ] : [];
+    resultHtml = `<div class="results-hero your-search-panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);flex-wrap:wrap;">
+        <div>
+          <h2 style="margin:0;font-size:20px;letter-spacing:-.02em;">${esc(domain)}</h2>
+          <div style="margin-top:var(--space-2);">${badge}</div>
+        </div>
+        <div style="text-align:right;"><strong style="font-size:20px;">${priceStr}</strong><span style="color:var(--color-text-secondary);font-size:12px;display:block;">${status==="available"?" / first year": status==="premium"?"Premium purchase price":"Try an alternative"}</span></div>
+        <button class="button button--primary" type="button" data-add-domain="${esc(domain)}" data-price="${price||""}">${status==="available"?"Add to cart":"See options"}</button>
+        <button class="compare-table__favorite" type="button" data-favorite-domain="${esc(domain)}" aria-label="Favorite ${esc(domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button>
+      </div>
+      <p class="search-result__message" style="margin-top:var(--space-4);">${esc(msg)}</p>
+    </div>`;
+    if (suggestions.length) {
+      suggestionsHtml = `<div class="results-block"><p class="results-block__label">Suggestions</p><div class="row-group">${suggestions.map(s=>`<div class="domain-result"><div><h3 class="domain-result__name">${esc(s.domain)}</h3><div class="domain-result__status">${statusBadgeHtml(s.status)}</div></div><div class="domain-result__price"><strong>${s.price}</strong><span>${s.cadence}</span></div><button class="compare-table__favorite" type="button" data-favorite-domain="${esc(s.domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><button class="text-action" type="button" data-add-domain="${esc(s.domain)}" data-price="${s.price}">Add</button></div>`).join("")}</div></div>`;
+    }
+  } else {
+    resultHtml = `<div class="results-block"><p class="taken-domain__dates">Enter a name above to check availability. .net only.</p></div>`;
+  }
+  const historyEntries = `<div class="recent-searches"><p class="recent-searches__label">Recent searches</p><ul id="recent-searches-list"></ul><a class="text-action" href="/history">View all history \\u2192</a></div>`;
+  const searchBody = `
+    <section class="search-toolbar">
+      <div class="search-toolbar__layout">
+        <div>
+          <h1 class="search-toolbar__heading">Search domains</h1>
+          <form method="get" action="/search" class="search-toolbar__bar">
+            <div class="signature-search__frame" style="max-width:520px;">
+              <span class="signature-search__icon" aria-hidden="true">\u2315</span>
+              <input id="search-input" name="q" class="signature-search__input" value="${esc(q)}" placeholder="namenice" aria-label="Search your domain name" />
+              <span class="signature-search__tld">.net</span>
+              <button class="signature-search__submit" type="submit">Search</button>
+            </div>
+          </form>
+        </div>
+        ${historyEntries}
+      </div>
+    </section>
+    <section class="results-block"><p class="results-block__label">Your search</p>${resultHtml}</section>
+    ${suggestionsHtml}
+    <section class="results-block">
+      <p class="results-block__label">Compare</p>
+      <table class="compare-table">
+        <thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Renewal</th><th></th></tr></thead>
+        <tbody id="compare-table-body"></tbody>
+      </table>
+    </section>
+    <section class="results-block">
+      <p class="results-block__label">Names like this</p>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:var(--space-6);">
+        <div><p style="font-weight:600;">Shorter</p><ul><li><a class="text-action" href="/search?q=namnice">namnice.net</a></li><li><a class="text-action" href="/search?q=nameco">nameco.net</a></li><li><a class="text-action" href="/search?q=niceco">niceco.net</a></li></ul></div>
+        <div><p style="font-weight:600;">More descriptive</p><ul><li><a class="text-action" href="/search?q=namenicehub">namenicehub.net</a></li><li><a class="text-action" href="/search?q=namenicehq">namenicehq.net</a></li><li><a class="text-action" href="/search?q=namenicepro">namenicepro.net</a></li></ul></div>
+      </div>
+    </section>
+    <script type="module">
+      import { addToCart, addToHistory, toggleFavorite, isFavorited } from "/assets/js/state.js";
+      import { pulseCartBadge } from "/assets/js/cart-drawer.js";
+      const q = new URLSearchParams(location.search).get("q")||"";
+      if(q){
+        let d = q.toLowerCase(); if(!d.includes(".")) d+=".net";
+        try { addToHistory({ query: q, domain: d, status: document.querySelector(".status-badge")?.textContent?.includes("Available")?"available":"unavailable", price: document.querySelector(".results-hero strong")?.textContent||null }); } catch {}
+      }
+      // hydrate recent
+      try {
+        const h = JSON.parse(localStorage.getItem("namenice_history")||"[]").slice(0,3);
+        document.getElementById("recent-searches-list").innerHTML = h.map(e=>'<li><a href="/search?q='+encodeURIComponent(e.query)+'">'+e.query+'</a></li>').join("") || '<li class="muted">No recent searches</li>';
+      } catch {}
+      document.querySelectorAll("[data-add-domain]").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          addToCart({ domain: btn.dataset.addDomain, price: btn.dataset.price || "$12.99", cadence: "/ year" });
+          pulseCartBadge();
+          btn.textContent="Added \\u2713"; setTimeout(()=> btn.textContent="Add to cart", 1200);
+        });
+      });
+      document.querySelectorAll("[data-favorite-domain]").forEach(btn=>{
+        const d = btn.dataset.favoriteDomain;
+        const update = ()=> btn.setAttribute("aria-pressed", String(isFavorited(d)));
+        btn.addEventListener("click", ()=>{ toggleFavorite({ domain: d }); update(); });
+        update();
+      });
+    </script>
+  `;
+  return c.html(shell("Search — Namenice", searchBody, { user, activeTab: "search" }));
+});
+
+app.get("/favorites", async (c) => {
+  const user = await getSessionUser(c);
+  const body = `
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Favorites</h1><p class="taken-domain__dates">Saved domains — heart any domain to keep it here. Stored locally until you sign in.</p></section>
+    <section class="results-block" id="favorites-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
+    <script type="module">
+      import { getFavorites, toggleFavorite } from "/assets/js/state.js";
+      import { addToCart, isFavorited } from "/assets/js/state.js";
+      import { pulseCartBadge } from "/assets/js/cart-drawer.js";
+      function render(){
+        const list = getFavorites();
+        const el = document.getElementById("favorites-list");
+        if(list.length===0){ el.innerHTML='<p class="taken-domain__dates">No favorites yet. <a class="text-action" href="/search">Search domains</a> and tap the heart.</p>'; return; }
+        el.innerHTML = '<div class="row-group">'+list.map(item=>'<div class="domain-result"><div><h3 class="domain-result__name">'+item.domain+'</h3><div class="domain-result__status">'+(item.status?'<span class="status-badge status-badge--'+item.status+'">'+item.status+'</span>':'<span class="muted">Not checked yet</span>')+'</div></div><div class="domain-result__price"><strong>'+(item.price||"\\u2014")+'</strong><span>'+(item.cadence||"")+'</span></div><button class="compare-table__favorite" data-fav="'+item.domain+'" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><button class="text-action" data-add="'+item.domain+'">Add</button></div>').join("")+'</div>';
+        el.querySelectorAll("[data-fav]").forEach(b=> b.addEventListener("click", ()=>{ toggleFavorite({domain:b.dataset.fav}); render(); }));
+        el.querySelectorAll("[data-add]").forEach(b=> b.addEventListener("click", ()=>{ const it=list.find(x=>x.domain===b.dataset.add); addToCart({domain:it.domain, price:it.price||"$12.99"}); pulseCartBadge(); }));
+      }
+      render();
+    </script>
+  `;
+  return c.html(shell("Favorites — Namenice", body, { user, activeTab: "favorites" }));
+});
+
+app.get("/history", async (c) => {
+  const user = await getSessionUser(c);
+  const body = `
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">History</h1><p class="taken-domain__dates">Past searches with captured results — persists locally.</p></section>
+    <section class="results-block" id="history-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
+    <script type="module">
+      import { getHistory } from "/assets/js/state.js";
+      const el = document.getElementById("history-list");
+      const list = getHistory();
+      if(list.length===0) el.innerHTML='<p class="taken-domain__dates">No history yet. <a class="text-action" href="/search">Search a domain</a> to start.</p>';
+      else el.innerHTML='<div class="row-group">'+list.map(e=>'<div class="domain-result"><div><h3 class="domain-result__name">'+e.query+(e.domain && e.domain!==e.query ? ' \\u2192 '+e.domain : '')+'</h3><div class="domain-result__status">'+(e.status?'<span class="status-badge status-badge--'+e.status+'">'+e.status+'</span>':'')+' <span class="muted">'+new Date(e.at).toLocaleString()+'</span></div></div><div class="domain-result__price"><strong>'+(e.price||"\\u2014")+'</strong></div><a class="text-action" href="/search?q='+encodeURIComponent(e.query)+'">Search again</a></div>').join("")+'</div>';
+    </script>
+  `;
+  return c.html(shell("History — Namenice", body, { user, activeTab: "history" }));
+});
+
+app.get("/cart", async (c) => {
+  const user = await getSessionUser(c);
+  const body = `
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Your cart</h1><p class="taken-domain__dates">Direct-URL fallback for the cart drawer — same data. Choose a package per domain.</p></section>
+    <section class="results-block" id="cart-page"><p class="taken-domain__dates">Loading\\u2026</p></section>
+    <script type="module">
+      import { getCart, removeFromCart, setCartItemBundle, cartSubtotal } from "/assets/js/state.js";
+      import { getBundleOption, bundleOptions } from "/assets/js/mocks/bundle-options.js";
+      function render(){
+        const items = getCart();
+        const el = document.getElementById("cart-page");
+        if(items.length===0){ el.innerHTML='<p class="taken-domain__dates">Your cart is empty.</p><a class="button button--primary" href="/search">Search domains</a>'; return; }
+        let subtotal = 0; items.forEach(i=> subtotal+=getBundleOption(i.bundle||"domain").price);
+        el.innerHTML = '<div class="cart-drawer__items" style="padding:0;">'+items.map(item=>{
+          const cur = getBundleOption(item.bundle||"domain");
+          return '<div class="cart-drawer__item" style="border:0;"><div class="cart-drawer__item-row" style="cursor:default;"><span class="cart-drawer__item-name"><strong>'+item.domain+'</strong><span class="cart-drawer__item-package">'+cur.label+'</span></span><span class="cart-drawer__item-price">$'+cur.price.toFixed(2)+'</span></div><div class="cart-drawer__bundle-options">'+bundleOptions.map(o=>'<label class="cart-drawer__bundle-option"><input type="radio" name="bundle-'+item.domain+'" value="'+o.id+'" '+(cur.id===o.id?'checked':'')+' data-bundle="'+item.domain+'"><span>'+o.label+' — $'+o.price.toFixed(2)+'</span></label>').join("")+'</div><button class="text-action" data-remove="'+item.domain+'">Remove</button></div>';
+        }).join("")+'</div><div style="margin-top:var(--space-6);display:flex;justify-content:space-between;align-items:center;border-top:var(--border-default);padding-top:var(--space-5);"><span>Subtotal</span><strong>$'+subtotal.toFixed(2)+'</strong></div><div style="margin-top:var(--space-6);"><a class="button button--primary" href="/checkout">Continue to checkout</a></div><p class="cart-drawer__mock-note" style="margin-top:var(--space-4);">Bundle prices are placeholder figures for internal review.</p>';
+        el.querySelectorAll("[data-remove]").forEach(b=> b.addEventListener("click", ()=>{ removeFromCart(b.dataset.remove); render(); }));
+        el.querySelectorAll("[data-bundle]").forEach(r=> r.addEventListener("change", ()=>{ setCartItemBundle(r.dataset.bundle, r.value); render(); }));
+      }
+      render();
+    </script>
+  `;
+  return c.html(shell("Cart — Namenice", body, { user }));
+});
+
+app.get("/checkout", async (c) => {
+  const user = await getSessionUser(c);
+  const body = `
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Checkout</h1><p class="taken-domain__dates">Honest placeholder — not wired to Stripe yet in this preview. Your cart is saved locally.</p></section>
+    <section class="results-block">
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:var(--space-8);" class="checkout-layout">
+        <div>
+          <div style="background:var(--color-surface-dark);color:var(--color-surface-raised);padding:var(--space-6);border-radius:var(--radius-search);">
+            <h3 style="margin:0 0 var(--space-4);color:var(--color-surface-raised);">Complete your purchase</h3>
+            <p style="color:var(--color-border-subtle);">In production, this goes to Stripe Checkout or pay-from-balance.</p>
+            <div id="checkout-items"></div>
+            <div style="margin-top:var(--space-6);"><a class="button button--primary" href="/checkout" id="checkout-pay">Pay with Stripe (demo)</a></div>
+          </div>
+        </div>
+        <aside class="checkout-summary" style="border:var(--border-default);padding:var(--space-5);background:var(--color-surface-raised);">
+          <p class="results-block__label">Order summary</p><div id="checkout-summary"></div>
+        </aside>
+      </div>
+    </section>
+    <script type="module">
+      import { getCart } from "/assets/js/state.js";
+      import { getBundleOption } from "/assets/js/mocks/bundle-options.js";
+      import { addOrder, addOwnedDomain, clearCart } from "/assets/js/state.js";
+      const items = getCart();
+      const summary = document.getElementById("checkout-summary");
+      const list = document.getElementById("checkout-items");
+      if(items.length===0){ summary.innerHTML='<p class="taken-domain__dates">No items. <a class="text-action" href="/search">Search</a></p>'; }
+      else {
+        let total=0; items.forEach(i=> total+=getBundleOption(i.bundle||"domain").price );
+        summary.innerHTML = items.map(i=>{const o=getBundleOption(i.bundle||"domain"); return '<div style="display:flex;justify-content:space-between;padding:var(--space-2) 0;border-bottom:var(--border-default);"><span>'+i.domain+'<br><small class="muted">'+o.label+'</small></span><span>$'+o.price.toFixed(2)+'</span></div>';}).join("") + '<div style="display:flex;justify-content:space-between;padding:var(--space-4) 0;font-weight:600;"><span>Total</span><span>$'+total.toFixed(2)+'</span></div>';
+        list.innerHTML = '<p class="taken-domain__dates">'+items.length+' domain(s) ready.</p>';
+      }
+      document.getElementById("checkout-pay")?.addEventListener("click", (e)=>{
+        e.preventDefault();
+        const now=Date.now();
+        items.forEach(i=>{
+          const o=getBundleOption(i.bundle||"domain");
+          addOrder({ id: 'ORD-'+now+'-'+Math.floor(Math.random()*1000), domain:i.domain, price:'$'+o.price.toFixed(2), cadence:'/ year', bundleLabel:o.label, total:'$'+o.price.toFixed(2), at: now, email: 'demo@namenice.net' });
+          addOwnedDomain({ domain:i.domain, bundleLabel:o.label });
+        });
+        clearCart();
+        location.href='/orders';
+      });
+    </script>
+  `;
+  return c.html(shell("Checkout — Namenice", body, { user }));
+});
+
+app.get("/orders", async (c) => {
+  const user = await getSessionUser(c);
+  const body = `
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Orders</h1><p class="taken-domain__dates">Your order history — persisted locally in this prototype.</p></section>
+    <section class="results-block" id="orders-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
+    <script type="module">
+      import { getOrders, formatDate } from "/assets/js/state.js";
+      const el=document.getElementById("orders-list");
+      const list=getOrders();
+      if(list.length===0) el.innerHTML='<p class="taken-domain__dates">No orders yet. <a class="text-action" href="/search">Find a domain</a></p>';
+      else el.innerHTML='<div class="row-group">'+list.map(o=>'<div class="domain-result"><div><h3 class="domain-result__name">'+o.domain+'</h3><div class="taken-domain__dates">'+o.bundleLabel+' \\u00B7 '+o.price+' \\u00B7 '+formatDate(o.at)+'</div></div><div class="domain-result__price"><strong>'+o.total+'</strong></div></div>').join("")+'</div>';
+    </script>
+  `;
+  return c.html(shell("Orders — Namenice", body, { user }));
+});
+
+app.get("/account", async (c) => {
+  const user = await getSessionUser(c);
+  const orgId = Number(c.req.query("org") || 1);
+  let balance = 0;
+  try { balance = await getOrgBalance(c.env as any, orgId); } catch {}
+  const balanceStr = (balance/100).toFixed(2);
+  const body = `
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Account settings</h1><p class="taken-domain__dates">Your balance \\u00B7 Org ${orgId} \\u00B7 ${user ? esc(user.email) : "Not signed in"}</p></section>
+    <section class="results-block">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6);">
+        <div class="card" style="border-left:4px solid var(--color-interaction);padding:var(--space-6);background:var(--color-surface-raised);border:var(--border-default);border-left:4px solid var(--color-interaction);">
+          <p class="muted" style="margin:0;">Your balance</p>
+          <div style="font-size:1.8rem;font-weight:800;">$${balanceStr}</div>
+          <p class="taken-domain__dates">Auto-renew pays from balance first. Stripe is the processor.</p>
+          <form method="post" action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;margin-top:var(--space-4);"><input name="amount" placeholder="25.00" value="25.00" style="padding:.6rem;border:var(--border-default);border-radius:8px;width:110px"><button class="button button--primary" type="submit">Top up via Stripe \\u2192</button></form>
+          <p class="taken-domain__dates" style="margin-top:var(--space-4);"><a class="text-action" href="/billing?org=${orgId}">View billing & ledger \\u2192</a> \\u00B7 <a class="text-action" href="/settings?org=${orgId}">Organization settings \\u2192</a></p>
+        </div>
+        <div>
+          <p class="results-block__label">Quick links</p>
+          <ul>
+            <li><a class="text-action" href="/domains?org=${orgId}">My Domains</a></li>
+            <li><a class="text-action" href="/orders">Orders</a></li>
+            <li><a class="text-action" href="/api/keys?org=${orgId}">API keys</a></li>
+            <li><a class="text-action" href="/webhooks?org=${orgId}">Webhooks</a></li>
+            <li><a class="text-action" href="/audit?org=${orgId}">Audit log (90 days)</a></li>
+          </ul>
+          <div style="margin-top:var(--space-6);" id="local-account"></div>
+        </div>
+      </div>
+    </section>
+    <script type="module">
+      import { isSignedIn, getCartCount } from "/assets/js/state.js";
+      document.getElementById("local-account").innerHTML = isSignedIn() ? '<p class="taken-domain__dates">Signed in (demo). <button class="text-action" data-sign-out>Sign out</button></p><p class="taken-domain__dates">Cart items: '+getCartCount()+'</p>' : '<p class="taken-domain__dates">Not signed in (demo). <a class="text-action" href="/signin">Sign in</a></p>';
+    </script>
+  `;
+  return c.html(shell("Account — Namenice", body, { user }));
+});
+
+app.get("/transfer", async (c) => {
+  const user = await getSessionUser(c);
+  const body = `
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Transfer a domain</h1><p class="taken-domain__dates">Bring your .net domain to namenice — keep it where you can see it.</p></section>
+    <div style="display:grid;grid-template-columns: 1.4fr 1fr; gap: var(--space-8);">
+      <section class="results-block">
+        <form method="post" action="/transfer/in" style="display:grid;gap:var(--space-4);max-width:480px;">
+          <div><label class="field-label">Domain to transfer</label><input class="field" name="domain" placeholder="example.net" required pattern="^.+\.net$" title="Only .net domains can be transferred" /></div>
+          <div><label class="field-label">Authorization code (EPP)</label><input class="field" name="auth_code" placeholder="Enter code from current registrar" required /></div>
+          <p class="taken-domain__dates" style="display:flex;gap:var(--space-2);align-items:center;"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z" stroke="currentColor" stroke-width="1.4"/><path d="M6.5 9V6.5a3.5 3.5 0 0 1 7 0V9" stroke="currentColor" stroke-width="1.4"/></svg> Transfers are currently supported for .net domains.</p>
+          <button class="button button--primary" type="submit">Start transfer \\u2192</button>
+        </form>
+      </section>
+      <aside class="checkout-summary" style="border:var(--border-default);padding:var(--space-5);background:var(--color-surface-raised);">
+        <p class="results-block__label">How domain transfers work</p>
+        <div style="display:flex;flex-direction:column;gap:var(--space-3);">
+          ${["Check eligibility","Unlock your domain","Enter your authorization code","Start the transfer"].map((s,i)=>'<div style="padding:var(--space-2) 0;border-bottom:var(--border-default);"><strong>'+(i+1)+'. '+s+'</strong></div>').join("")}
+        </div>
+        <p class="taken-domain__dates" style="margin-top: var(--space-4);">Need help? <a class="text-action" href="#">Learn what you\\u2019ll need before transferring</a></p>
+      </aside>
+    </div>
+    <script type="module">
+      import { addTransferRequest, getTransferRequests } from "/assets/js/state.js";
+      const form=document.querySelector('form[action="/transfer/in"]');
+      form?.addEventListener("submit", (e)=>{
+        const fd=new FormData(form);
+        const domain=String(fd.get("domain")||"").toLowerCase().trim();
+        if(domain && domain.endsWith(".net")){
+          try { if(!getTransferRequests().some(t=>t.domain===domain)) addTransferRequest({domain, price:"$12.99", renewalExtension:"1 year"}); } catch {}
+        }
+      });
+    </script>
+  `;
+  return c.html(shell("Transfer — Namenice", body, { user, activeTab: "transfer" }));
+});
+
+app.post("/transfer/in", async (c) => {
+  const user = await getSessionUser(c);
+  if (!user) return c.redirect("/signin?next=/transfer", 302);
+  const exp = await requireExplicitOrg(c, user.email);
+  if (!exp.ok) return exp.response;
+  const orgId = exp.orgId;
+  const form = await c.req.formData();
+  const domain = String(form.get("domain")||"").toLowerCase().trim();
+  const auth_code = String(form.get("auth_code")||"").trim();
+  if (!domain.endsWith(".net")) return c.text("Only .net domains can be transferred", 400);
+  if (!auth_code) return c.text("Authorization code required", 400);
+  // In production, call Dynadot transfer API; here we record intent and redirect to domains
+  try { await c.env.DB.prepare("INSERT OR IGNORE INTO domains (org_id, domain, status, created_at) VALUES (?, ?, 'pending_transfer', ?)").bind(orgId, domain, Math.floor(Date.now()/1000)).run().catch(()=>{}); } catch {}
+  try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"domain.transfer.start", target: domain, actor: user.email }); } catch {}
+  return c.redirect(`/domains?org=${orgId}`, 303);
+});
 
 app.get("/sitemap.xml", (c) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://www.namenice.net/</loc><changefreq>daily</changefreq><priority>1.0</priority></url></urlset>`;
