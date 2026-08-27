@@ -59,6 +59,15 @@
 .hero__popular .status-badge { font-size: 10px; padding: 2px 6px; }
 .hero__popular .status-badge--available { background: rgba(232,243,74,0.18); color: var(--color-brand-expression); border: 1px solid rgba(232,243,74,0.3); }
 
+.hero__extensions { text-align: right; }
+.hero__extensions-label { margin: 0 0 var(--space-5); color: rgba(255,253,248,0.6); font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.hero__extensions-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-end; }
+.hero__extensions-list li { font: 400 clamp(36px, 5vw, 64px) / 0.95 var(--font-display); color: var(--color-brand-expression); letter-spacing: -.02em; position: relative; }
+.hero__extensions-list li::after { content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 3px; background: var(--color-brand-expression); border-radius: 2px; opacity: 0.9; transform: rotate(-1deg); }
+.hero__extensions-list li.muted { color: rgba(255,253,248,0.35); font-size: clamp(28px, 4vw, 48px); }
+.hero__extensions-list li.muted::after { display: none; }
+
+
 
 .hero-search-overlap { position: relative; z-index: 2; max-width: 760px; margin: -44px auto var(--space-9); padding: 0 var(--space-5); }
 .hero-search-overlap .signature-search__frame { box-shadow: var(--shadow-overlay); }
