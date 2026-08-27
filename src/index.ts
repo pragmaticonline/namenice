@@ -153,10 +153,15 @@ async function requireExplicitOrg(c: any, email: string): Promise<{ orgId: numbe
 }
 
 app.use("*", async (c, next) => {
-  const rawHost = c.req.header("host") || new URL(c.req.url).host;
-  const host = rawHost.split(":")[0].toLowerCase();
-  if (host === "namenice.net" && !rawHost.includes("127.0.0.1") && !rawHost.includes("localhost") && !new URL(c.req.url).hostname.includes("127.0.0.1")) {
-    const url = new URL(c.req.url);
+  const url = new URL(c.req.url);
+  const rawHost = (c.req.header("host") || url.host || "").toLowerCase();
+  const hostname = rawHost.split(":")[0];
+  const urlHostname = url.hostname.toLowerCase();
+  const mfHost = c.req.header("mf-original-hostname") || c.req.raw.headers.get("mf-original-hostname");
+  const cfRay = c.req.header("cf-ray") || c.req.raw.headers.get("cf-ray");
+  const cfIp = c.req.header("cf-connecting-ip") || c.req.raw.headers.get("cf-connecting-ip");
+  const isLocal = rawHost.includes("localhost") || rawHost.includes("127.0.0.1") || rawHost.includes("::1") || urlHostname.includes("localhost") || urlHostname.includes("127.0.0.1") || rawHost.includes("workers.dev") || urlHostname.includes("workers.dev") || !!mfHost || cfIp === "127.0.0.1" || !cfRay;
+  if (hostname === "namenice.net" && !isLocal) {
     url.hostname = "www.namenice.net";
     url.protocol = "https:";
     return c.redirect(url.toString(), 301);
@@ -177,7 +182,7 @@ async function requireOrgMember(c: any, orgId: number): Promise<{ accountId:numb
   try {
     const origin = new URL(c.req.url).origin;
     const auth = createAuth(c.env as any, origin);
-    const session = await (auth as any).api.getSession({ headers: c.req.header() });
+    const session = await (auth as any).api.getSession({ headers: c.req.raw.headers });
     if (session?.user?.email) {
       await ensurePersonalOrganization(c.env as any, session.user.email);
       const row = await c.env.DB.prepare("SELECT role FROM organization_members WHERE org_id=? AND account_id=(SELECT id FROM accounts WHERE email=?)").bind(orgId, session.user.email).first().catch(()=>null);
@@ -192,7 +197,7 @@ async function getSessionUser(c: any): Promise<{ email:string; name?:string } | 
   try {
     const origin = new URL(c.req.url).origin;
     const auth = createAuth(c.env as any, origin);
-    const session = await (auth as any).api.getSession({ headers: c.req.header() });
+    const session = await (auth as any).api.getSession({ headers: c.req.raw.headers });
     if (session?.user?.email) {
       await ensurePersonalOrganization(c.env as any, session.user.email);
       return { email: session.user.email, name: session.user.name };
@@ -271,7 +276,7 @@ if (form) {
       }
       const url = mode==='up' ? '/api/auth/sign-up/email' : '/api/auth/sign-in/email';
       const body = mode==='up' ? { email, password, name: name || email.split('@')[0] } : { email, password };
-      const r = await fetch(url, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+      const r = await fetch(url, { method:'POST', headers:{'content-type':'application/json'}, credentials:'include', body: JSON.stringify(body) });
       const j = await r.json().catch(()=>({}));
       if (!r.ok) { if(msg){msg.textContent=j.message||j.error||'Failed: '+r.status; msg.hidden=false; msg.style.color='var(--color-status-error)';} }
       else { status.textContent='Success — redirecting\u2026'; status.style.color='var(--color-status-success)'; location.href='/domains'; }
@@ -760,7 +765,7 @@ app.on(["GET","POST"], "/api/auth/*", async (c) => {
 });
 
 app.get("/signout", async (c) => {
-  try { const origin = new URL(c.req.url).origin; const auth = createAuth(c.env as any, origin); await (auth as any).api.signOut({ headers: c.req.header() }); } catch {}
+  try { const origin = new URL(c.req.url).origin; const auth = createAuth(c.env as any, origin); await (auth as any).api.signOut({ headers: c.req.raw.headers }); } catch {}
   const h = c.req.header("cookie") || "";
   c.header("Set-Cookie", `__Secure-better-auth.session_token=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
   return c.redirect("/", 302);
