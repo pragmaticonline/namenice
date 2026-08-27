@@ -299,11 +299,11 @@ app.get("/", async (c) => {
         <div class="hero__extensions">
           <p class="hero__extensions-label">Popular extensions</p>
           <ul class="hero__extensions-list">
-            <li><a href="/search?q=shop.net">.net</a></li>
-            <li><a href="/search?q=shop.com">.com</a></li>
-            <li><a href="/search?q=shop.io">.io</a></li>
-            <li><a href="/search?q=shop.co">.co</a></li>
-            <li><a href="/search?q=shop.org">.org</a></li>
+            <li>.net</li>
+            <li>.com</li>
+            <li>.io</li>
+            <li>.co</li>
+            <li>.org</li>
           </ul>
         </div>
       </div>
