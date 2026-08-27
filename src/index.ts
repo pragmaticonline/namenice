@@ -54,7 +54,7 @@ function shell(title: string, body: string, opts?: { user?: { email:string } | n
       </div>
     </nav>`;
   const accountMenuUser = user ? esc(user.email) : "namenice";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+Thai:wght@400;500&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice \u2014 find a name worth owning. .net only. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+Thai:wght@400;500&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice \u2014 find a name worth owning. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
 import { initCartDrawer } from "/assets/js/cart-drawer.js";
 import { initAccountMenu } from "/assets/js/account-menu.js";
 try { initCartDrawer(); } catch(e) { console.warn(e); }
@@ -297,13 +297,13 @@ app.get("/", async (c) => {
         </div>
         <div class="hero__mark">
         <div class="hero__extensions">
-          <p class="hero__extensions-label">Popular extensions — .net only</p>
+          <p class="hero__extensions-label">Popular extensions</p>
           <ul class="hero__extensions-list">
-            <li>.net</li>
-            <li class="muted">.com</li>
-            <li class="muted">.io</li>
-            <li class="muted">.co</li>
-            <li class="muted">.org</li>
+            <li><a href="/search?q=shop.net">.net</a></li>
+            <li><a href="/search?q=shop.com">.com</a></li>
+            <li><a href="/search?q=shop.io">.io</a></li>
+            <li><a href="/search?q=shop.co">.co</a></li>
+            <li><a href="/search?q=shop.org">.org</a></li>
           </ul>
         </div>
       </div>
@@ -314,8 +314,8 @@ app.get("/", async (c) => {
         <form method="get" action="/search" class="signature-search__frame" style="flex:1" onsubmit="const v=this.querySelector('input[name=q]').value.trim(); if(!v){event.preventDefault(); this.querySelector('input[name=q]').focus(); return false;}">
           <label class="sr-only" for="domain-search-input">Search for a domain</label>
           <span class="signature-search__icon" aria-hidden="true">\u2315</span>
-          <input id="domain-search-input" name="q" class="signature-search__input" placeholder="namenice" aria-describedby="search-helper" value="" />
-          <span class="signature-search__tld">.net</span>
+          <input id="domain-search-input" name="q" class="signature-search__input" placeholder="yourdomain.com" aria-describedby="search-helper" value="" />
+          
           <button class="signature-search__submit" type="submit">Check availability</button>
         </form>
         <p id="search-helper" class="signature-search__helper">Search is free. Create an account when you\u2019re ready.</p>
@@ -360,7 +360,7 @@ app.get("/", async (c) => {
     <section class="section">
       <p class="section__eyebrow">Management</p>
       <h2 class="section__heading">Keep your domains where you can see them.</h2>
-      <div class="management-preview"><p class="management-preview__lede">All your .net domains in one list, each with its own overview, DNS, renewal, and transfer controls.</p>
+      <div class="management-preview"><p class="management-preview__lede">All your domains in one list, each with its own overview, DNS, renewal, and transfer controls.</p>
         <div class="management-panel"><div class="management-panel__header"><h3>My Domains</h3><span class="status-badge status-badge--available">\u25CF Active</span></div>
           <div class="row-group" style="padding: var(--space-5);">
             <div class="cart-page-item" style="padding: var(--space-3) 0;">
@@ -392,10 +392,10 @@ app.get("/search", async (c) => {
   let resultHtml = "";
   let suggestionsHtml = "";
   if (q) {
-    // Normalize to .net only per product rule
     let domain = q.toLowerCase().trim();
+    // Allow any TLD — if no dot, default to .net for convenience
     if (!domain.includes(".")) domain = domain.replace(/[^a-z0-9-]/g,"") + ".net";
-    if (!domain.endsWith(".net")) domain = domain.split(".")[0] + ".net";
+    // Keep user-typed TLD as-is (supports .com, .io, .co, .org, etc.)
     let available = false; let price: string | null = null; let raw: any = null;
     let status: "available"|"unavailable"|"premium" = "unavailable";
     if (dynadotConfigured(c.env as any)) {
@@ -443,7 +443,7 @@ app.get("/search", async (c) => {
       suggestionsHtml = `<div class="results-block"><p class="results-block__label">Suggestions</p><div class="row-group">${suggestions.map(s=>`<div class="domain-result"><div><h3 class="domain-result__name">${esc(s.domain)}</h3><div class="domain-result__status">${statusBadgeHtml(s.status)}</div></div><div class="domain-result__price"><strong>${s.price}</strong><span>${s.cadence}</span></div><button class="compare-table__favorite" type="button" data-favorite-domain="${esc(s.domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><button class="text-action" type="button" data-add-domain="${esc(s.domain)}" data-price="${s.price}">Add</button></div>`).join("")}</div></div>`;
     }
   } else {
-    resultHtml = `<div class="results-block"><p class="taken-domain__dates">Enter a name above to check availability. .net only.</p></div>`;
+    resultHtml = `<div class="results-block"><p class="taken-domain__dates">Enter a name above to check availability — any TLD.</p></div>`;
   }
   const historyEntries = `<div class="recent-searches"><p class="recent-searches__label">Recent searches</p><ul id="recent-searches-list"></ul><a class="text-action" href="/history">View all history \\u2192</a></div>`;
   const searchBody = `
@@ -454,8 +454,8 @@ app.get("/search", async (c) => {
           <form method="get" action="/search" class="search-toolbar__bar">
             <div class="signature-search__frame" style="max-width:520px;">
               <span class="signature-search__icon" aria-hidden="true">\u2315</span>
-              <input id="search-input" name="q" class="signature-search__input" value="${esc(q)}" placeholder="namenice" aria-label="Search your domain name" />
-              <span class="signature-search__tld">.net</span>
+              <input id="search-input" name="q" class="signature-search__input" value="${esc(q)}" placeholder="yourdomain.com" aria-label="Search your domain name" />
+              
               <button class="signature-search__submit" type="submit">Search</button>
             </div>
           </form>
