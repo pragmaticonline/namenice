@@ -160,6 +160,7 @@ CREATE TABLE account (
   refreshTokenExpiresAt INTEGER,
   scope TEXT,
   password TEXT,
+  issuer TEXT,
   createdAt INTEGER NOT NULL,
   updatedAt INTEGER NOT NULL,
   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE

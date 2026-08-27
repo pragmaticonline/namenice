@@ -50,6 +50,7 @@ export const account = sqliteTable("account", {
   refreshTokenExpiresAt: integer("refreshTokenExpiresAt", { mode: "timestamp_ms" }),
   scope: text("scope"),
   password: text("password"),
+  issuer: text("issuer"),
   createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
 });

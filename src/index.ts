@@ -760,9 +760,12 @@ app.on(["GET","POST"], "/api/auth/*", async (c) => {
   try {
     const origin = new URL(c.req.url).origin;
     const auth = createAuth(c.env as any, origin);
-    return await (auth as any).handler(c.req.raw);
-  } catch (e:any) { return c.text(String(e?.message||e), 500); }
+    const res = await (auth as any).handler(c.req.raw);
+    if (!res.ok) { const txt = await res.clone().text().catch(()=>"<no body>"); console.error("[auth] handler not ok", c.req.url, res.status, txt.slice(0,800)); }
+    return res;
+  } catch (e:any) { console.error("[auth] handler throw", e?.stack||e); return c.text(String(e?.message||e), 500); }
 });
+
 
 app.get("/signout", async (c) => {
   try { const origin = new URL(c.req.url).origin; const auth = createAuth(c.env as any, origin); await (auth as any).api.signOut({ headers: c.req.raw.headers }); } catch {}
