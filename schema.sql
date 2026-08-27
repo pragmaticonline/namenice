@@ -150,13 +150,16 @@ CREATE TABLE session (
 );
 CREATE TABLE account (
   id TEXT PRIMARY KEY,
-  userId TEXT NOT NULL,
   accountId TEXT NOT NULL,
   providerId TEXT NOT NULL,
+  userId TEXT NOT NULL,
   accessToken TEXT,
   refreshToken TEXT,
   idToken TEXT,
-  expiresAt INTEGER,
+  accessTokenExpiresAt INTEGER,
+  refreshTokenExpiresAt INTEGER,
+  scope TEXT,
+  password TEXT,
   createdAt INTEGER NOT NULL,
   updatedAt INTEGER NOT NULL,
   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
