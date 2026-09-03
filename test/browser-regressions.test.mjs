@@ -5,15 +5,49 @@ import workerImport from "../src/index.ts";
 
 const worker = workerImport.fetch ? workerImport : workerImport.default;
 
+test("browser-stored values are escaped before HTML rendering", async () => {
+  const source = readFileSync(new URL("../public/assets/js/state.js", import.meta.url), "utf8");
+  const { escapeHtml } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+  assert.equal(escapeHtml(`<img src=x onerror="bad()">'&`), "&lt;img src=x onerror=&quot;bad()&quot;&gt;&#39;&amp;");
+});
+
 test("search focus is drawn around the composite control, not inside the input", () => {
   const css = readFileSync(new URL("../public/assets/css/search-results.css", import.meta.url), "utf8");
   assert.doesNotMatch(css, /signature-search__input:focus-visible\s*\{[^}]*outline\s*:\s*(?!0|none)/s);
-  assert.match(css, /signature-search__frame:focus-within\s*\{[^}]*border-color/s);
+  assert.match(css, /signature-search__frame:focus-within\s*\{[^}]*border-color[^}]*box-shadow/s);
 });
 
 test("all pages reserve scrollbar space to prevent navigation jitter", () => {
   const css = readFileSync(new URL("../public/assets/css/base.css", import.meta.url), "utf8");
   assert.match(css, /html\s*\{[^}]*(?:overflow-y\s*:\s*scroll|scrollbar-gutter\s*:\s*stable)/s);
+});
+
+test("search page renders a real arrow rather than a Unicode escape", async () => {
+  const response = await worker.fetch(new Request("http://localhost/search"), {});
+  const html = await response.text();
+  assert.match(html, /View all history →/);
+  assert.doesNotMatch(html, /View all history \\u2192/);
+});
+
+test("malformed domain searches are rejected before registrar lookup", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let registrarCalls = 0;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("api.dynadot.com")) registrarCalls++;
+    return new Response("unexpected", { status:500 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  for (const query of ["a..com", ".com", "-bad.com", "bad-.com", "foo.invalid", "<script>.com"]) {
+    const response = await worker.fetch(new Request(`http://localhost/search?q=${encodeURIComponent(query)}`), {
+      DYNADOT_API_KEY:"prod_test_key",
+      DYNADOT_API_SECRET:"prod_test_secret",
+    });
+    const html = await response.text();
+    assert.match(html, /Enter a valid domain name/);
+    assert.doesNotMatch(html, /already registered/);
+    assert.match(html, /const validSearch = false/);
+  }
+  assert.equal(registrarCalls, 0);
 });
 
 test("public HTML identifies its own canonical and Open Graph URL", async () => {

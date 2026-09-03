@@ -1,6 +1,6 @@
 import { button } from "./components.js";
 import {
-  getCart, removeFromCart, getCartCount,
+  getCart, removeFromCart, getCartCount, escapeHtml,
 } from "./state.js";
 
 let injected = false;
@@ -70,18 +70,19 @@ function renderDrawer() {
 }
 
 function renderCartItem(item) {
+  const domain = escapeHtml(item.domain);
   return `
     <div class="cart-drawer__item">
       <div class="cart-drawer__item-row">
         <span class="cart-drawer__item-name">
-          <strong>${item.domain}</strong>
+          <strong>${domain}</strong>
           <span class="cart-drawer__item-package">1-year registration</span>
         </span>
         <span class="cart-drawer__item-right">
           <span class="cart-drawer__item-price">$${itemPrice(item).toFixed(2)}</span>
         </span>
       </div>
-      <button type="button" class="cart-drawer__remove" data-remove-domain="${item.domain}" aria-label="Remove ${item.domain} from cart">Remove</button>
+      <button type="button" class="cart-drawer__remove" data-remove-domain="${domain}" aria-label="Remove ${domain} from cart">Remove</button>
     </div>
   `;
 }

@@ -21,6 +21,14 @@ function safeReturnTarget(value:string|undefined, fallback="/domains"):string {
   return value?.startsWith("/") && !value.startsWith("//") ? value : fallback;
 }
 
+function isValidSearchDomain(domain:string):boolean {
+  if (domain.length > 253) return false;
+  const labels = domain.split(".");
+  if (labels.length < 2 || labels.some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return false;
+  const tld = labels.at(-1) || "";
+  return /^[a-z]{2,63}$/.test(tld) && !["example", "invalid", "localhost", "test"].includes(tld);
+}
+
 function wordmarkHtml(): string {
   return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
 }
@@ -416,15 +424,18 @@ app.get("/search", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   let resultHtml = "";
   let suggestionsHtml = "";
+  let validSearch = false;
   if (q) {
     const registrarReady = dynadotConfigured(c.env as any);
     let domain = q.toLowerCase().trim();
     // Allow any TLD — if no dot, default to .net for convenience
     if (!domain.includes(".")) domain = domain.replace(/[^a-z0-9-]/g,"") + ".net";
+    const invalidDomain = !isValidSearchDomain(domain);
+    validSearch = !invalidDomain;
     // Keep user-typed TLD as-is (supports .com, .io, .co, .org, etc.)
     let available = false; let price: string | null = null; let raw: any = null;
     let status: "available"|"unavailable"|"premium" = "unavailable";
-    if (registrarReady) {
+    if (registrarReady && !invalidDomain) {
       try {
         const result = await getDomainQuote(c.env as any, domain);
         if (result.ok) {
@@ -439,8 +450,9 @@ app.get("/search", async (c) => {
       status = "unavailable";
     }
     const priceStr = price ? `$${price}` : "—";
-    const badge = statusBadgeHtml(status);
-    const msg = !registrarReady ? "Domain search is temporarily unavailable. Please try again later."
+    const badge = invalidDomain ? `<span class="status-badge status-badge--unavailable"><span aria-hidden="true">●</span> Invalid domain</span>` : statusBadgeHtml(status);
+    const msg = invalidDomain ? "Enter a valid domain name, such as example.com."
+      : !registrarReady ? "Domain search is temporarily unavailable. Please try again later."
       : status === "available" ? "Ready when you are. Review the price before you continue."
       : status === "premium" ? "Premium domains have a separate purchase price. Renewal details come next."
       : "This name is already registered.";
@@ -450,16 +462,16 @@ app.get("/search", async (c) => {
           <h2 style="margin:0;font-size:20px;letter-spacing:-.02em;">${esc(domain)}</h2>
           <div style="margin-top:var(--space-2);">${badge}</div>
         </div>
-        <div style="text-align:right;"><strong style="font-size:20px;">${priceStr}</strong><span style="color:var(--color-text-secondary);font-size:12px;display:block;">${status==="available"?" / first year": status==="premium"?"Premium purchase price":"Not for sale"}</span></div>
+        <div style="text-align:right;"><strong style="font-size:20px;">${priceStr}</strong><span style="color:var(--color-text-secondary);font-size:12px;display:block;">${invalidDomain?"Check spelling":status==="available"?" / first year": status==="premium"?"Premium purchase price":"Not for sale"}</span></div>
         ${registrarReady && available ? `<button class="button button--primary" type="button" data-add-domain="${esc(domain)}" data-price="${price||""}">Add to cart</button>` : ""}
-        <button class="compare-table__favorite" type="button" data-favorite-domain="${esc(domain)}" aria-label="Favorite ${esc(domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button>
+        ${invalidDomain ? "" : `<button class="compare-table__favorite" type="button" data-favorite-domain="${esc(domain)}" aria-label="Favorite ${esc(domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button>`}
       </div>
       <p class="search-result__message" style="margin-top:var(--space-4);">${esc(msg)}</p>
     </div>`;
   } else {
     resultHtml = `<div class="results-block"><p class="taken-domain__dates">Enter a name above to check availability — any TLD.</p></div>`;
   }
-  const historyEntries = `<div class="recent-searches"><p class="recent-searches__label">Recent searches</p><ul id="recent-searches-list"></ul><a class="text-action" href="/history">View all history \\u2192</a></div>`;
+  const historyEntries = `<div class="recent-searches"><p class="recent-searches__label">Recent searches</p><ul id="recent-searches-list"></ul><a class="text-action" href="/history">View all history →</a></div>`;
   const searchBody = `
     <section class="search-toolbar">
       <div class="search-toolbar__layout">
@@ -480,17 +492,18 @@ app.get("/search", async (c) => {
     <section class="results-block"><p class="results-block__label">Your search</p>${resultHtml}</section>
     ${suggestionsHtml}
     <script type="module">
-      import { addToCart, addToHistory, toggleFavorite, isFavorited, getCart } from "/assets/js/state.js";
+      import { addToCart, addToHistory, toggleFavorite, isFavorited, getCart, escapeHtml } from "/assets/js/state.js";
       import { pulseCartBadge } from "/assets/js/cart-drawer.js";
       const q = new URLSearchParams(location.search).get("q")||"";
-      if(q){
+      const validSearch = ${String(validSearch)};
+      if(q && validSearch){
         let d = q.toLowerCase(); if(!d.includes(".")) d+=".net";
         try { addToHistory(q, { domain: d, status: document.querySelector(".status-badge")?.textContent?.includes("Available")?"available":"unavailable", price: document.querySelector(".results-hero strong")?.textContent||null }); } catch {}
       }
       // hydrate recent
       try {
         const h = JSON.parse(localStorage.getItem("namenice_history")||"[]").slice(0,3);
-        document.getElementById("recent-searches-list").innerHTML = h.map(e=>'<li><a href="/search?q='+encodeURIComponent(e.query)+'">'+e.query+'</a></li>').join("") || '<li class="muted">No recent searches</li>';
+        document.getElementById("recent-searches-list").innerHTML = h.map(e=>'<li><a href="/search?q='+encodeURIComponent(String(e.query||""))+'">'+escapeHtml(e.query)+'</a></li>').join("") || '<li class="muted">No recent searches</li>';
       } catch {}
       document.querySelectorAll("[data-add-domain]").forEach(btn=>{
         const markAdded = ()=>{ btn.textContent="Added \\u2713"; btn.disabled=true; };
@@ -521,12 +534,12 @@ app.get("/favorites", async (c) => {
     <section class="search-toolbar"><h1 class="search-toolbar__heading">Favorites</h1><p class="taken-domain__dates">Saved domains — heart any domain to keep it here. Stored locally until you sign in.</p></section>
     <section class="results-block" id="favorites-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
     <script type="module">
-      import { getFavorites, toggleFavorite } from "/assets/js/state.js";
+      import { getFavorites, toggleFavorite, escapeHtml } from "/assets/js/state.js";
       function render(){
         const list = getFavorites();
         const el = document.getElementById("favorites-list");
         if(list.length===0){ el.innerHTML='<p class="taken-domain__dates">No favorites yet. <a class="text-action" href="/search">Search domains</a> and tap the heart.</p>'; return; }
-        el.innerHTML = '<div class="row-group">'+list.map(item=>'<div class="domain-result"><div><h3 class="domain-result__name">'+item.domain+'</h3><div class="domain-result__status"><span class="muted">Availability not checked</span></div></div><button class="compare-table__favorite" data-fav="'+item.domain+'" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><a class="text-action" href="/search?q='+encodeURIComponent(item.domain)+'">Check availability</a></div>').join("")+'</div>';
+        el.innerHTML = '<div class="row-group">'+list.map(item=>{ const domain=escapeHtml(item.domain); return '<div class="domain-result"><div><h3 class="domain-result__name">'+domain+'</h3><div class="domain-result__status"><span class="muted">Availability not checked</span></div></div><button class="compare-table__favorite" data-fav="'+domain+'" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><a class="text-action" href="/search?q='+encodeURIComponent(String(item.domain||""))+'">Check availability</a></div>';}).join("")+'</div>';
         el.querySelectorAll("[data-fav]").forEach(b=> b.addEventListener("click", ()=>{ toggleFavorite({domain:b.dataset.fav}); render(); }));
       }
       render();
@@ -541,11 +554,11 @@ app.get("/history", async (c) => {
     <section class="search-toolbar"><h1 class="search-toolbar__heading">History</h1><p class="taken-domain__dates">Past searches with captured results — persists locally.</p></section>
     <section class="results-block" id="history-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
     <script type="module">
-      import { getHistory } from "/assets/js/state.js";
+      import { getHistory, escapeHtml } from "/assets/js/state.js";
       const el = document.getElementById("history-list");
       const list = getHistory();
       if(list.length===0) el.innerHTML='<p class="taken-domain__dates">No history yet. <a class="text-action" href="/search">Search a domain</a> to start.</p>';
-      else el.innerHTML='<div class="row-group">'+list.map(e=>'<div class="domain-result"><div><h3 class="domain-result__name">'+e.query+(e.domain && e.domain!==e.query ? ' \\u2192 '+e.domain : '')+'</h3><div class="domain-result__status">'+(e.status?'<span class="status-badge status-badge--'+e.status+'">'+e.status+'</span>':'')+' <span class="muted">'+new Date(e.at).toLocaleString()+'</span></div></div><div class="domain-result__price"><strong>'+(e.price||"\\u2014")+'</strong></div><a class="text-action" href="/search?q='+encodeURIComponent(e.query)+'">Search again</a></div>').join("")+'</div>';
+      else el.innerHTML='<div class="row-group">'+list.map(e=>{ const result=e.result||{}; const query=escapeHtml(e.query); const domain=escapeHtml(result.domain); const status=["available","unavailable","premium"].includes(result.status)?result.status:""; return '<div class="domain-result"><div><h3 class="domain-result__name">'+query+(domain && domain!==query ? ' → '+domain : '')+'</h3><div class="domain-result__status">'+(status?'<span class="status-badge status-badge--'+status+'">'+escapeHtml(status)+'</span>':'')+' <span class="muted">'+escapeHtml(new Date(Number(e.at)||0).toLocaleString())+'</span></div></div><div class="domain-result__price"><strong>'+escapeHtml(result.price||"—")+'</strong></div><a class="text-action" href="/search?q='+encodeURIComponent(String(e.query||""))+'">Search again</a></div>';}).join("")+'</div>';
     </script>
   `;
   return c.html(shell("History — Namenice", body, { user, activeTab: "history" }));
@@ -557,7 +570,7 @@ app.get("/cart", async (c) => {
     <section class="search-toolbar"><h1 class="search-toolbar__heading">Your cart</h1><p class="taken-domain__dates">Each registration price is rechecked before payment.</p></section>
     <section class="results-block" id="cart-page"><p class="taken-domain__dates">Loading\\u2026</p></section>
     <script type="module">
-      import { getCart, removeFromCart } from "/assets/js/state.js";
+      import { getCart, removeFromCart, escapeHtml } from "/assets/js/state.js";
       function render(){
         const items = getCart();
         const el = document.getElementById("cart-page");
@@ -565,7 +578,7 @@ app.get("/cart", async (c) => {
         const itemPrice = item => { const n=Number.parseFloat(String(item.price||"").replace("$","")); return Number.isFinite(n)&&n>=0?n:0; };
         const subtotal = items.reduce((sum,item)=>sum+itemPrice(item),0);
         el.innerHTML = '<div class="cart-drawer__items" style="padding:0;">'+items.map(item=>{
-          return '<div class="cart-drawer__item" style="border:0;"><div class="cart-drawer__item-row" style="cursor:default;"><span class="cart-drawer__item-name"><strong>'+item.domain+'</strong><span class="cart-drawer__item-package">1-year registration</span></span><span class="cart-drawer__item-price">$'+itemPrice(item).toFixed(2)+'</span></div><button class="text-action" data-remove="'+item.domain+'">Remove</button></div>';
+          const domain=escapeHtml(item.domain); return '<div class="cart-drawer__item" style="border:0;"><div class="cart-drawer__item-row" style="cursor:default;"><span class="cart-drawer__item-name"><strong>'+domain+'</strong><span class="cart-drawer__item-package">1-year registration</span></span><span class="cart-drawer__item-price">$'+itemPrice(item).toFixed(2)+'</span></div><button class="text-action" data-remove="'+domain+'">Remove</button></div>';
         }).join("")+'</div><div style="margin-top:var(--space-6);display:flex;justify-content:space-between;align-items:center;border-top:var(--border-default);padding-top:var(--space-5);"><span>Subtotal</span><strong>$'+subtotal.toFixed(2)+'</strong></div><div style="margin-top:var(--space-6);"><a class="button button--primary" href="/checkout">Continue to checkout</a></div>';
         el.querySelectorAll("[data-remove]").forEach(b=> b.addEventListener("click", ()=>{ removeFromCart(b.dataset.remove); render(); }));
       }
@@ -616,7 +629,7 @@ app.get("/checkout", async (c) => {
       </div>
     </section>
     <script type="module">
-      import { getCart } from "/assets/js/state.js";
+      import { getCart, escapeHtml } from "/assets/js/state.js";
       const items = getCart();
       const summary = document.getElementById("checkout-summary");
       const list = document.getElementById("checkout-items");
@@ -631,7 +644,7 @@ app.get("/checkout", async (c) => {
         const domains=items.map(item=>item.domain).slice(0,10);
         document.getElementById("checkout-domains").value=domains.join(",");
         const priceFor = domain => { const item=items.find(entry=>entry.domain===domain); const n=Number.parseFloat(String(item?.price||"").replace("$","")); return Number.isFinite(n)&&n>=0?n:0; };
-        summary.innerHTML=domains.map(domain=>'<div style="display:flex;justify-content:space-between;padding:var(--space-2) 0;border-bottom:var(--border-default);"><span>'+domain+'</span><span>$'+priceFor(domain).toFixed(2)+'</span></div>').join('')+'<div style="display:flex;justify-content:space-between;padding:var(--space-4) 0;font-weight:600"><span>Estimated total</span><span>$'+domains.reduce((sum,domain)=>sum+priceFor(domain),0).toFixed(2)+'</span></div><p class="taken-domain__dates">Availability and final price are rechecked before Stripe.</p>';
+        summary.innerHTML=domains.map(domain=>'<div style="display:flex;justify-content:space-between;padding:var(--space-2) 0;border-bottom:var(--border-default);"><span>'+escapeHtml(domain)+'</span><span>$'+priceFor(domain).toFixed(2)+'</span></div>').join('')+'<div style="display:flex;justify-content:space-between;padding:var(--space-4) 0;font-weight:600"><span>Estimated total</span><span>$'+domains.reduce((sum,domain)=>sum+priceFor(domain),0).toFixed(2)+'</span></div><p class="taken-domain__dates">Availability and final price are rechecked before Stripe.</p>';
         list.innerHTML='<p class="taken-domain__dates"><strong>'+domains.length+'</strong> Domain'+(domains.length===1?' is':'s are')+' ready to purchase.</p>';
       }
     </script>
