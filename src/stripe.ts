@@ -5,6 +5,13 @@ async function stripeRequest<T>(env: StripeEnv, path: string, params: URLSearchP
   const r = await fetch(`https://api.stripe.com/v1/${path}`, { method:"POST", headers:{ Authorization:`Basic ${btoa(`${env.STRIPE_SECRET_KEY}:`)}`, "content-type":"application/x-www-form-urlencoded"}, body: params });
   const j = await r.json().catch(()=>({})) as any; if(!r.ok) throw new Error(j.error?.message||`Stripe ${r.status}`); return j as T;
 }
+export async function getCheckoutSession(env:StripeEnv, sessionId:string) {
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) throw new Error("Invalid Checkout Session");
+  const r = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, { headers:{ Authorization:`Basic ${btoa(`${env.STRIPE_SECRET_KEY}:`)}` } });
+  const j = await r.json().catch(()=>({})) as any;
+  if (!r.ok) throw new Error(j.error?.message || `Stripe ${r.status}`);
+  return j as { id:string; payment_status:string; metadata?:Record<string,string> };
+}
 export function createTopupCheckoutSession(env: StripeEnv, input: { orgId:number; accountId:number; email:string; customerId?:string|null; amountCents:number; successUrl:string; cancelUrl:string }){
   // Custom amount top-up — Stripe as primary processor (no stored card, Checkout handles SCA)
   if (input.amountCents < 500) throw new Error("Minimum top-up is $5.00");
@@ -44,6 +51,45 @@ export function createDomainCheckoutWithBalanceFallback(env: StripeEnv, input: {
   p.set("metadata[type]", "domain_purchase");
   p.set("metadata[domain]", input.domain);
   p.set("metadata[duration]", String(input.duration));
+  return stripeRequest<{id:string;url:string}>(env,"checkout/sessions",p);
+}
+
+export function createCartCheckoutSession(env: StripeEnv, input: { orgId:number; accountId:number; email:string; customerId?:string|null; domains:string[]; amountCentsEach:number; successUrl:string; cancelUrl:string }) {
+  if (input.domains.length < 1 || input.domains.length > 10) throw new Error("Cart must contain 1–10 Domains");
+  const domains = input.domains.map((domain) => domain.toLowerCase().trim());
+  if (domains.some((domain) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain))) throw new Error("Cart contains an invalid Domain");
+  const p = new URLSearchParams();
+  p.set("mode", "payment");
+  domains.forEach((domain, index) => {
+    p.set(`line_items[${index}][price_data][currency]`, "usd");
+    p.set(`line_items[${index}][price_data][unit_amount]`, String(input.amountCentsEach));
+    p.set(`line_items[${index}][price_data][product_data][name]`, `Domain ${domain} — 1y`);
+    p.set(`line_items[${index}][quantity]`, "1");
+  });
+  p.set("client_reference_id", String(input.orgId));
+  p.set("customer_email", input.email);
+  if (input.customerId) { p.delete("customer_email"); p.set("customer", input.customerId); }
+  p.set("success_url", input.successUrl);
+  p.set("cancel_url", input.cancelUrl);
+  p.set("metadata[org_id]", String(input.orgId));
+  p.set("metadata[account_id]", String(input.accountId));
+  p.set("metadata[type]", "domain_cart_purchase");
+  p.set("metadata[domains]", domains.join(","));
+  return stripeRequest<{id:string;url:string}>(env, "checkout/sessions", p);
+}
+
+export function createRenewalCheckoutSession(env:StripeEnv, input:{orgId:number;accountId:number;email:string;customerId?:string|null;domain:string;amountCents:number;successUrl:string;cancelUrl:string}) {
+  const p = new URLSearchParams();
+  p.set("mode","payment");
+  p.set("line_items[0][price_data][currency]","usd");
+  p.set("line_items[0][price_data][unit_amount]",String(input.amountCents));
+  p.set("line_items[0][price_data][product_data][name]",`Renew Domain ${input.domain} — 1y`);
+  p.set("line_items[0][quantity]","1");
+  p.set("customer_email",input.email);
+  if(input.customerId){p.delete("customer_email");p.set("customer",input.customerId);}
+  p.set("success_url",input.successUrl);p.set("cancel_url",input.cancelUrl);
+  p.set("metadata[org_id]",String(input.orgId));p.set("metadata[account_id]",String(input.accountId));
+  p.set("metadata[type]","domain_renewal");p.set("metadata[domain]",input.domain);
   return stripeRequest<{id:string;url:string}>(env,"checkout/sessions",p);
 }
 export function createPortalSession(env: StripeEnv, customerId: string, returnUrl: string){

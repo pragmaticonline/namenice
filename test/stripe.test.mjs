@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { verifyStripeSignature } from "../src/stripe.ts";
+import { verifyStripeSignature, createCartCheckoutSession, createRenewalCheckoutSession } from "../src/stripe.ts";
 
 const stripeSrc = readFileSync(new URL("../src/stripe.ts", import.meta.url), "utf8");
 const indexSrc = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
@@ -65,3 +65,37 @@ test("verifyStripeSignature handles extra whitespace and extra params", async ()
   assert.equal(await verifyStripeSignature(body, `t=${ts} , v1=${digest} , v0=ignored`, secret), true);
 });
 
+test("cart checkout sends every Domain as a Stripe line item", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let params;
+  globalThis.fetch = async (_url, init) => {
+    params = new URLSearchParams(init.body);
+    return new Response(JSON.stringify({ id: "cs_cart", url: "https://checkout.stripe.test/cart" }), { status: 200 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const session = await createCartCheckoutSession({ STRIPE_SECRET_KEY: "sk_test" }, {
+    orgId: 42, accountId: 7, email: "account@example.com",
+    domains: ["one.example", "two.example"], amountCentsEach: 1499,
+    successUrl: "https://namenice.test/domains", cancelUrl: "https://namenice.test/checkout",
+  });
+
+  assert.equal(session.url, "https://checkout.stripe.test/cart");
+  assert.equal(params.get("line_items[0][price_data][product_data][name]"), "Domain one.example — 1y");
+  assert.equal(params.get("line_items[1][price_data][product_data][name]"), "Domain two.example — 1y");
+  assert.equal(params.get("metadata[type]"), "domain_cart_purchase");
+  assert.equal(params.get("metadata[domains]"), "one.example,two.example");
+});
+
+test("renewal checkout is labeled for registrar renewal fulfillment", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let params;
+  globalThis.fetch = async (_url, init) => {
+    params = new URLSearchParams(init.body);
+    return new Response(JSON.stringify({id:"cs_renew",url:"https://checkout.stripe.test/renew"}), {status:200});
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  await createRenewalCheckoutSession({STRIPE_SECRET_KEY:"sk_test"}, {orgId:42,accountId:7,email:"a@example.com",domain:"example.com",amountCents:1499,successUrl:"https://namenice.test/domains",cancelUrl:"https://namenice.test/domains"});
+  assert.equal(params.get("metadata[type]"), "domain_renewal");
+  assert.equal(params.get("metadata[domain]"), "example.com");
+});

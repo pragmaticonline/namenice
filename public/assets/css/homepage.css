@@ -134,9 +134,9 @@
     margin-top: var(--space-2);
     border-top: var(--border-default);
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    scrollbar-width: thin;
   }
-  .site-nav__tabs::-webkit-scrollbar { display: none; }
+  .site-nav__tabs::-webkit-scrollbar { height: 4px; }
   .site-nav__tabs .site-nav__tab { white-space: nowrap; flex-shrink: 0; }
   .site-nav__tabs .site-nav__tab--secondary { padding-left: var(--space-5); }
   .hero { min-height: 0; background: var(--color-surface-dark); }

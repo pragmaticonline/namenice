@@ -1,21 +1,11 @@
 const FAVORITES_KEY = "namenice_favorites";
 const HISTORY_KEY = "namenice_history";
 const CART_KEY = "namenice_cart";
-const SIGNED_IN_KEY = "namenice_signed_in_demo";
 const ORDERS_KEY = "namenice_orders";
 const DOMAINS_KEY = "namenice_owned_domains";
 const TRANSFERS_KEY = "namenice_transfer_requests";
 const HISTORY_LIMIT = 8;
 
-// Demo credentials for this prototype. Not a real account system \u2014 just a
-// fixed username/password so the login screens have something real to check
-// against, instead of accepting anything typed in.
-export const DEMO_USERNAME = "namenice";
-export const DEMO_PASSWORD = "1234";
-
-export function checkDemoCredentials(username, password) {
-  return username.trim().toLowerCase() === DEMO_USERNAME && password === DEMO_PASSWORD;
-}
 
 function readList(key) {
   try {
@@ -92,7 +82,7 @@ export function isInCart(domain) {
   return getCart().some((item) => item.domain === domain);
 }
 
-/** item: { domain, price, cadence }. price should be a string like "$12.99"; numeric parsing happens at subtotal time. */
+/** item: { domain, price, cadence }. price is display metadata; checkout uses the server-authoritative registration price. */
 export function addToCart(item) {
   const list = getCart();
   if (list.some((existing) => existing.domain === item.domain)) return list;
@@ -122,22 +112,6 @@ export function getCartSubtotal() {
     const value = parseFloat(String(item.price).replace(/[^0-9.]/g, ""));
     return sum + (Number.isFinite(value) ? value : 0);
   }, 0);
-}
-
-export function isSignedIn() {
-  try {
-    return window.localStorage.getItem(SIGNED_IN_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-export function setSignedIn(value) {
-  try {
-    window.localStorage.setItem(SIGNED_IN_KEY, value ? "true" : "false");
-  } catch {
-    // ignore
-  }
 }
 
 export function formatRelativeTime(timestamp) {

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import workerImport from "../src/index.ts";
+
+const worker = workerImport.fetch ? workerImport : workerImport.default;
 
 const indexSrc = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
 const authSrc = readFileSync(new URL("../src/auth.ts", import.meta.url), "utf8");
@@ -12,6 +15,8 @@ test("auth guard uses requireOrgMember and returns 302/403 correctly", () => {
   // should not have header bypass
   assert.doesNotMatch(indexSrc, /x-namenice-account/);
   assert.doesNotMatch(indexSrc, /x-org-id/i);
+  assert.doesNotMatch(indexSrc, /role:\s*row\?\.role\s*\|\|\s*["']owner["']/);
+  assert.match(indexSrc, /if\s*\(!row\s*\|\|\s*!acc\?\.id\)\s*return null/);
 });
 
 test("can() role matrix correct — owner/admin can manage, viewer cannot", () => {
@@ -47,7 +52,40 @@ test("billing/ledger rendering escapes dynamic fields", () => {
   assert.match(indexSrc, /esc\(r\.domain\|\|r\.description\)/);
 });
 
+test("DNS management renders stored Record fields as text", () => {
+  assert.match(indexSrc, /esc\(r\.host\)/);
+  assert.match(indexSrc, /esc\(r\.type\)/);
+  assert.match(indexSrc, /esc\(r\.value\)/);
+});
+
 test("session cookie is HttpOnly and Secure via better-auth", () => {
   assert.match(indexSrc, /createAuth|better-auth/);
   assert.match(indexSrc, /getSession/);
+});
+
+test("sign-in only offers server-backed Account authentication", async () => {
+  const response = await worker.fetch(
+    new Request("http://localhost/signin"),
+    {},
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(html, /namenice_signed_in_demo/);
+  assert.doesNotMatch(html, /namenice<\/code> \/ <code>1234/);
+  assert.match(html, /\/api\/auth\/sign-in\/email/);
+  assert.doesNotMatch(html, />Google<|>GitHub</);
+});
+
+test("sign-in returns the Account to its same-origin protected destination", async () => {
+  const response = await worker.fetch(new Request("http://localhost/signin?next=%2Fbilling%3Forg%3D7"), {});
+  const html = await response.text();
+  assert.match(html, /\/billing\?org=7/);
+  assert.doesNotMatch(html, /location\.href='\/domains'/);
+});
+
+test("sign-out returns Better Auth's cookie-clearing response", () => {
+  assert.match(indexSrc, /signOut\(\{[\s\S]*asResponse:\s*true/);
+  assert.doesNotMatch(indexSrc, /__Secure-better-auth\.session_token=; Max-Age=0/);
 });

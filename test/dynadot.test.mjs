@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { getDynadotBaseUrl, isSandboxCredential, isSandboxEnabled, assertProductionDynadotReady, redactHeaders, sanitizeDynadotErrorMessage, createDynadotSignature } from "../src/dynadot.ts";
+import { getDynadotBaseUrl, isSandboxCredential, isSandboxEnabled, assertProductionDynadotReady, redactHeaders, sanitizeDynadotErrorMessage, createDynadotSignature, getTransferAuthCode, transferDomainIn, setDnssec } from "../src/dynadot.ts";
 
 const dynadotSrc = readFileSync(new URL("../src/dynadot.ts", import.meta.url), "utf8");
 const indexSrc = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
@@ -70,4 +70,72 @@ test("dynadot source has HMAC base64 and sandbox guard", () => {
 test("index guards dynadot register with production check where needed", () => {
   // buying via balance should still call dynadot; ensure file references it
   assert.match(indexSrc, /registerDomain|searchDomain/);
+});
+
+test("getTransferAuthCode requests a fresh code and unlocks the Domain", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, init) => {
+    request = { url, init };
+    return new Response(JSON.stringify({ data: { auth_code: "secret-code" } }), { status: 200 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const result = await getTransferAuthCode({
+    DYNADOT_API_KEY: "sandbox_key",
+    DYNADOT_API_SECRET: "secret",
+    DYNADOT_SANDBOX: "true",
+  }, "example.com", { newCode: true, unlock: true });
+
+  assert.equal(result.ok, true);
+  assert.match(request.url, /\/restful\/v2\/domains\/example\.com\/transfer_auth_code/);
+  assert.match(request.url, /new_code=true/);
+  assert.match(request.url, /unlock_domain_for_transfer=true/);
+  assert.equal(request.init.method, "GET");
+});
+
+test("transferDomainIn submits the authorization code to Dynadot", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, init) => {
+    request = { url, init };
+    return new Response(JSON.stringify({ data: { order_id: "123" } }), { status: 200 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const result = await transferDomainIn({
+    DYNADOT_API_KEY: "sandbox_key",
+    DYNADOT_API_SECRET: "secret",
+    DYNADOT_SANDBOX: "true",
+  }, "example.com", { authCode: "transfer-secret", duration: 1, privacy: "full" });
+
+  assert.equal(result.ok, true);
+  assert.match(request.url, /\/restful\/v2\/domains\/example\.com\/transfer_in$/);
+  assert.deepEqual(JSON.parse(request.init.body), {
+    domain: { duration: 1, auth_code: "transfer-secret", privacy: "full" },
+    currency: "USD",
+  });
+});
+
+test("setDnssec publishes DS and DNSKEY material at Dynadot", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, init) => {
+    request = { url, init };
+    return new Response(JSON.stringify({ data: { status: "success" } }), { status: 200 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const result = await setDnssec({
+    DYNADOT_API_KEY: "sandbox_key", DYNADOT_API_SECRET: "secret", DYNADOT_SANDBOX: "true",
+  }, "example.com", {
+    key_tag: 2371, digest_type: "sha256", digest: "ABCDEF", algorithm: "ecdsa_p256_sha256", flags: "ksk", public_key: "cHVibGlj",
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(request.url, /\/restful\/v2\/domains\/example\.com\/dnssec$/);
+  assert.equal(request.init.method, "PUT");
+  assert.deepEqual(JSON.parse(request.init.body), {
+    key_tag: 2371, digest_type: "sha256", digest: "ABCDEF", algorithm: "ecdsa_p256_sha256", flags: "ksk", public_key: "cHVibGlj",
+  });
 });

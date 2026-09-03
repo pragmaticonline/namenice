@@ -10,7 +10,7 @@ Hono on Cloudflare Workers, Better Auth, D1, Analytics Engine (90-day audit).
 - **Audit log** — `EVENTS blob1 LIKE 'audit:%'` 90 days via `auditReport()` (`src/metrics.ts` port of blognice).
 - **DNS** — `dns_records (A/AAAA/CNAME/MX/TXT/NS/SRV/CAA/ALIAS, TTL 60–86400)` + `domain_contacts` + nameserver override + `GET/POST /domains/:domain/dns` (validate, list, add, remove, audit).
 - **Registrar** — Dynadot REST v2 search/availability via `src/dynadot.ts` (sandbox-aware, `DYNADOT_SANDBOX=true` + `sandbox_` prefix), `POST /domains/search`, Stripe fallback for purchase.
-- **Auth** — Better Auth (email+password + Google/GitHub), `GET/POST /api/auth/*`, header `x-namenice-account` stub for local dev until D1 adapter finalized.
+- **Auth** — Better Auth backed by D1/Drizzle (email+password + Google/GitHub), `GET/POST /api/auth/*`, with HttpOnly session cookies.
 
 Run:
 ```sh

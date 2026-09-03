@@ -113,10 +113,14 @@
 .checkout-summary__item span:last-child { font-weight: 600; }
 .checkout-summary__item span { color: var(--color-text-secondary); font-size: 12px; }
 .checkout-summary__total { display: flex; align-items: center; justify-content: space-between; padding-top: var(--space-4); font-size: 16px; }
+.checkout-fields-grid { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-3); min-width:0; }
+.checkout-fields-grid--phone { grid-template-columns:100px minmax(0,1fr); }
+.checkout-fields-grid input { box-sizing:border-box; max-width:100%; min-width:0; width:100%; }
 
 @media (max-width: 900px) {
   .checkout-layout { grid-template-columns: 1fr; }
   .checkout-summary { position: static; }
+  .checkout-fields-grid, .checkout-fields-grid--phone { grid-template-columns:1fr; }
 }
 
 .transfer-timeline { display: flex; flex-direction: column; gap: 0; max-width: 420px; }

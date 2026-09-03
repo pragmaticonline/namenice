@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "description": "Namenice — modern DNS + domains on Cloudflare Workers. Stripe primary, prepaid balance, 90-day Analytics Engine audit.",
+  "bin": {
+    "namenice": "bin/namenice.mjs"
+  },
   "scripts": {
-    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "test": "node --import tsx --test test/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:production": "wrangler deploy --config wrangler.production.jsonc",
+    "deploy:production": "wrangler deploy",
     "db:init": "wrangler d1 execute namenice --file=./schema.sql",
     "db:init:local": "wrangler d1 execute namenice --local --file=./schema.sql",
     "test:dynadot-sandbox": "DYNADOT_SANDBOX=true node --experimental-strip-types tools/dynadot-sandbox.mjs"
@@ -20,6 +23,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260101.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.5.0",
     "wrangler": "^4.118.0"
   },

@@ -220,6 +220,50 @@ export function renewDomain(env: DynadotEnv, domain: string, input: { duration: 
   });
 }
 
+export function getTransferAuthCode(env: DynadotEnv, domain: string, input?: { newCode?: boolean; unlock?: boolean }) {
+  const query = buildQuery({
+    new_code: input?.newCode,
+    unlock_domain_for_transfer: input?.unlock,
+  });
+  return dynadotFetch<{ auth_code: string }>(env, "GET", `/restful/v2/domains/${encodeURIComponent(domain)}/transfer_auth_code${query}`);
+}
+
+export function transferDomainIn(
+  env: DynadotEnv,
+  domain: string,
+  input: { authCode: string; duration: number; privacy?: "off" | "partial" | "full"; currency?: string },
+) {
+  return dynadotFetch<any>(env, "POST", `/restful/v2/domains/${encodeURIComponent(domain)}/transfer_in`, {
+    domain: {
+      duration: input.duration,
+      auth_code: input.authCode,
+      privacy: input.privacy ?? "full",
+    },
+    currency: input.currency ?? "USD",
+  });
+}
+
+export type DynadotDnssec = {
+  key_tag?: number;
+  digest_type?: "sha1" | "sha256" | "gost" | "sha384";
+  digest?: string;
+  algorithm: string;
+  flags?: "zsk" | "ksk";
+  public_key?: string;
+};
+
+export function getDnssec(env: DynadotEnv, domain: string) {
+  return dynadotFetch<any>(env, "GET", `/restful/v2/domains/${encodeURIComponent(domain)}/dnssec`);
+}
+
+export function setDnssec(env: DynadotEnv, domain: string, input: DynadotDnssec) {
+  return dynadotFetch<any>(env, "PUT", `/restful/v2/domains/${encodeURIComponent(domain)}/dnssec`, input);
+}
+
+export function clearDnssec(env: DynadotEnv, domain: string) {
+  return dynadotFetch<any>(env, "DELETE", `/restful/v2/domains/${encodeURIComponent(domain)}/dnssec`);
+}
+
 export function getNameservers(env: DynadotEnv, domain: string) {
   return dynadotFetch<any>(env, "GET", `/restful/v2/domains/${encodeURIComponent(domain)}/nameservers`);
 }
