@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import workerImport from "../src/index.ts";
 
 const worker = workerImport.fetch ? workerImport : workerImport.default;
+
+test("search focus is drawn around the composite control, not inside the input", () => {
+  const css = readFileSync(new URL("../public/assets/css/search-results.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /signature-search__input:focus-visible\s*\{[^}]*outline\s*:\s*(?!0|none)/s);
+  assert.match(css, /signature-search__frame:focus-within\s*\{[^}]*border-color/s);
+});
 
 test("public HTML identifies its own canonical and Open Graph URL", async () => {
   const response = await worker.fetch(new Request("http://localhost/search?q=example"), {});

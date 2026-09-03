@@ -1,7 +1,6 @@
 .search-toolbar { padding: var(--space-8) 0 var(--space-2); }
 .search-toolbar__heading { margin: 0 0 var(--space-5); font-family: var(--font-display); font-size: clamp(28px, 4vw, 40px); letter-spacing: -.02em; color: var(--color-text-primary); }
 .search-toolbar__bar { max-width: 760px; }
-.search-toolbar__bar .signature-search__input:focus-visible { outline: 2px solid var(--color-interaction); outline-offset: 2px; }
 .search-toolbar__bar .signature-search__frame:focus-within { border-color: var(--color-interaction); }
 
 .search-toolbar__layout { display: grid; grid-template-columns: 1fr 260px; gap: var(--space-8); align-items: start; }
