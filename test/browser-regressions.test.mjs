@@ -81,6 +81,8 @@ test("Dynadot textual no premium flag renders an available standard Domain", asy
   const html = await response.text();
   assert.match(html, /status-badge--available/);
   assert.doesNotMatch(html, /Premium domain/);
+  assert.match(html, /getCart\(\)\.some/);
+  assert.match(html, /btn\.disabled=true/);
 });
 
 test("a registered RDAP Domain is never offered even when registrar flags it available", async (t) => {

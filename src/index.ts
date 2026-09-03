@@ -480,7 +480,7 @@ app.get("/search", async (c) => {
     <section class="results-block"><p class="results-block__label">Your search</p>${resultHtml}</section>
     ${suggestionsHtml}
     <script type="module">
-      import { addToCart, addToHistory, toggleFavorite, isFavorited } from "/assets/js/state.js";
+      import { addToCart, addToHistory, toggleFavorite, isFavorited, getCart } from "/assets/js/state.js";
       import { pulseCartBadge } from "/assets/js/cart-drawer.js";
       const q = new URLSearchParams(location.search).get("q")||"";
       if(q){
@@ -493,10 +493,12 @@ app.get("/search", async (c) => {
         document.getElementById("recent-searches-list").innerHTML = h.map(e=>'<li><a href="/search?q='+encodeURIComponent(e.query)+'">'+e.query+'</a></li>').join("") || '<li class="muted">No recent searches</li>';
       } catch {}
       document.querySelectorAll("[data-add-domain]").forEach(btn=>{
+        const markAdded = ()=>{ btn.textContent="Added \\u2713"; btn.disabled=true; };
+        if(getCart().some(item=>item.domain===btn.dataset.addDomain)) markAdded();
         btn.addEventListener("click", ()=>{
           addToCart({ domain: btn.dataset.addDomain, price: btn.dataset.price || "$14.99", cadence: "/ year" });
           pulseCartBadge();
-          btn.textContent="Added \\u2713"; setTimeout(()=> btn.textContent="Add to cart", 1200);
+          markAdded();
         });
       });
       document.querySelectorAll("[data-favorite-domain]").forEach(btn=>{
