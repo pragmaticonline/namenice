@@ -61,7 +61,8 @@ test("Dynadot textual no premium flag renders an available standard Domain", asy
     if (String(url).includes("api.dynadot.com")) {
       return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"3.44" } }), { status:200, headers:{ "content-type":"application/json" } });
     }
-    if (String(url).includes("rdap.org")) return new Response("", { status:404 });
+    if (String(url).includes("rdap.org")) return new Response("blocked", { status:403 });
+    if (String(url).includes("rdap.verisign.com")) return new Response("", { status:404 });
     return originalFetch(url);
   };
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -79,7 +80,7 @@ test("a registered RDAP Domain is never offered even when registrar flags it ava
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     if (String(url).includes("api.dynadot.com")) return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"3.44" } }), { status:200 });
-    if (String(url).includes("rdap.org")) return new Response(JSON.stringify({ objectClassName:"domain", ldhName:"GITHUB.COM" }), { status:200 });
+    if (String(url).includes("rdap.verisign.com")) return new Response(JSON.stringify({ objectClassName:"domain", ldhName:"GITHUB.COM" }), { status:200 });
     return originalFetch(url);
   };
   t.after(() => { globalThis.fetch = originalFetch; });
