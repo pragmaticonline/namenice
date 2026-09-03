@@ -29,6 +29,11 @@ test("search page renders a real arrow rather than a Unicode escape", async () =
   assert.doesNotMatch(html, /View all history \\u2192/);
 });
 
+test("rendered page templates contain characters rather than literal Unicode escapes", () => {
+  const source = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /\\\\u[0-9a-f]{4}/i);
+});
+
 test("malformed domain searches are rejected before registrar lookup", async (t) => {
   const originalFetch = globalThis.fetch;
   let registrarCalls = 0;

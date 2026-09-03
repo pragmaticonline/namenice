@@ -506,7 +506,7 @@ app.get("/search", async (c) => {
         document.getElementById("recent-searches-list").innerHTML = h.map(e=>'<li><a href="/search?q='+encodeURIComponent(String(e.query||""))+'">'+escapeHtml(e.query)+'</a></li>').join("") || '<li class="muted">No recent searches</li>';
       } catch {}
       document.querySelectorAll("[data-add-domain]").forEach(btn=>{
-        const markAdded = ()=>{ btn.textContent="Added \\u2713"; btn.disabled=true; };
+        const markAdded = ()=>{ btn.textContent="Added ✓"; btn.disabled=true; };
         if(getCart().some(item=>item.domain===btn.dataset.addDomain)) markAdded();
         btn.addEventListener("click", ()=>{
           addToCart({ domain: btn.dataset.addDomain, price: btn.dataset.price || "$14.99", cadence: "/ year" });
@@ -532,7 +532,7 @@ app.get("/favorites", async (c) => {
   const user = await getSessionUser(c);
   const body = `
     <section class="search-toolbar"><h1 class="search-toolbar__heading">Favorites</h1><p class="taken-domain__dates">Saved domains — heart any domain to keep it here. Stored locally until you sign in.</p></section>
-    <section class="results-block" id="favorites-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
+    <section class="results-block" id="favorites-list"><p class="taken-domain__dates">Loading…</p></section>
     <script type="module">
       import { getFavorites, toggleFavorite, escapeHtml } from "/assets/js/state.js";
       function render(){
@@ -552,7 +552,7 @@ app.get("/history", async (c) => {
   const user = await getSessionUser(c);
   const body = `
     <section class="search-toolbar"><h1 class="search-toolbar__heading">History</h1><p class="taken-domain__dates">Past searches with captured results — persists locally.</p></section>
-    <section class="results-block" id="history-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
+    <section class="results-block" id="history-list"><p class="taken-domain__dates">Loading…</p></section>
     <script type="module">
       import { getHistory, escapeHtml } from "/assets/js/state.js";
       const el = document.getElementById("history-list");
@@ -568,7 +568,7 @@ app.get("/cart", async (c) => {
   const user = await getSessionUser(c);
   const body = `
     <section class="search-toolbar"><h1 class="search-toolbar__heading">Your cart</h1><p class="taken-domain__dates">Each registration price is rechecked before payment.</p></section>
-    <section class="results-block" id="cart-page"><p class="taken-domain__dates">Loading\\u2026</p></section>
+    <section class="results-block" id="cart-page"><p class="taken-domain__dates">Loading…</p></section>
     <script type="module">
       import { getCart, removeFromCart, escapeHtml } from "/assets/js/state.js";
       function render(){
@@ -732,15 +732,15 @@ app.get("/account", async (c) => {
   try { balance = await getOrgBalance(c.env as any, orgId); } catch {}
   const balanceStr = (balance/100).toFixed(2);
   const body = `
-    <section class="search-toolbar"><h1 class="search-toolbar__heading">Account settings</h1><p class="taken-domain__dates">Your balance \\u00B7 Org ${orgId} \\u00B7 ${user ? esc(user.email) : "Not signed in"}</p></section>
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Account settings</h1><p class="taken-domain__dates">Your balance · Org ${orgId} · ${user ? esc(user.email) : "Not signed in"}</p></section>
     <section class="results-block">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6);">
         <div class="card" style="border-left:4px solid var(--color-interaction);padding:var(--space-6);background:var(--color-surface-raised);border:var(--border-default);border-left:4px solid var(--color-interaction);">
           <p class="muted" style="margin:0;">Your balance</p>
           <div style="font-size:1.8rem;font-weight:800;">$${balanceStr}</div>
           <p class="taken-domain__dates">Auto-renew pays from balance first. Stripe is the processor.</p>
-          <form method="post" action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;margin-top:var(--space-4);"><input name="amount" placeholder="25.00" value="25.00" style="padding:.6rem;border:var(--border-default);border-radius:8px;width:110px"><button class="button button--primary" type="submit">Top up via Stripe \\u2192</button></form>
-          <p class="taken-domain__dates" style="margin-top:var(--space-4);"><a class="text-action" href="/billing?org=${orgId}">View billing & ledger \\u2192</a> \\u00B7 <a class="text-action" href="/settings?org=${orgId}">Organization settings \\u2192</a></p>
+          <form method="post" action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;margin-top:var(--space-4);"><input name="amount" placeholder="25.00" value="25.00" style="padding:.6rem;border:var(--border-default);border-radius:8px;width:110px"><button class="button button--primary" type="submit">Top up via Stripe →</button></form>
+          <p class="taken-domain__dates" style="margin-top:var(--space-4);"><a class="text-action" href="/billing?org=${orgId}">View billing & ledger →</a> · <a class="text-action" href="/settings?org=${orgId}">Organization settings →</a></p>
         </div>
         <div>
           <p class="results-block__label">Quick links</p>
@@ -775,7 +775,7 @@ app.get("/transfer", async (c) => {
           <div><label class="field-label">Domain to transfer</label><input class="field" name="domain" placeholder="example.com" required /></div>
           <div><label class="field-label">Authorization code (EPP)</label><input class="field" name="auth_code" placeholder="Enter code from current registrar" required /></div>
           <p class="taken-domain__dates">Unlock the Domain at your current registrar before starting.</p>
-          <button class="button button--primary" type="submit">Start transfer \\u2192</button>
+          <button class="button button--primary" type="submit">Start transfer →</button>
         </form>
       </section>
       <aside class="checkout-summary" style="border:var(--border-default);padding:var(--space-5);background:var(--color-surface-raised);">
