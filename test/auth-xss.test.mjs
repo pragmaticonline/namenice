@@ -82,7 +82,15 @@ test("sign-in returns the Account to its same-origin protected destination", asy
   const response = await worker.fetch(new Request("http://localhost/signin?next=%2Fbilling%3Forg%3D7"), {});
   const html = await response.text();
   assert.match(html, /\/billing\?org=7/);
+  assert.match(html, /href="\/signup\?next=%2Fbilling%3Forg%3D7"/);
   assert.doesNotMatch(html, /location\.href='\/domains'/);
+});
+
+test("sign-up preserves checkout as the return destination", async () => {
+  const response = await worker.fetch(new Request("http://localhost/signup?next=%2Fcheckout"), {});
+  const html = await response.text();
+  assert.match(html, /href="\/signin\?next=%2Fcheckout"/);
+  assert.match(html, /const requestedNext = "\/checkout"/);
 });
 
 test("sign-out returns Better Auth's cookie-clearing response", () => {

@@ -53,11 +53,6 @@ test("unknown routes render a useful noindex page", async () => {
   assert.match(html, /Return home/);
 });
 
-test("private HTML is marked noindex", async () => {
-  const response = await worker.fetch(new Request("http://localhost/checkout"), {});
-  assert.match(await response.text(), /noindex,nofollow/);
-});
-
 test("signed-out visitors cannot see or open Domain transfer controls", async () => {
   const homepage = await worker.fetch(new Request("http://localhost/"), {});
   assert.doesNotMatch(await homepage.text(), /href="\/transfer"/);

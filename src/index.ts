@@ -17,6 +17,9 @@ function esc(s: string): string {
 }
 
 function returnTarget(c:any):string { const url = new URL(c.req.url); return url.pathname + url.search; }
+function safeReturnTarget(value:string|undefined, fallback="/domains"):string {
+  return value?.startsWith("/") && !value.startsWith("//") ? value : fallback;
+}
 
 function wordmarkHtml(): string {
   return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
@@ -234,7 +237,7 @@ async function getSessionUser(c: any): Promise<{ email:string; name?:string } | 
 }
 
 
-function signinPage(mode: "signin" | "signup" = "signin", env:any = {}): string {
+function signinPage(mode: "signin" | "signup" = "signin", env:any = {}, next="/domains"): string {
   const isSignup = mode === "signup";
   const title = isSignup ? "Create your account" : "Sign in to namenice";
   const lede = isSignup
@@ -242,7 +245,7 @@ function signinPage(mode: "signin" | "signup" = "signin", env:any = {}): string 
     : "Welcome back \u2014 sign in to manage your domains.";
   const btnLabel = isSignup ? "Create account" : "Sign in";
   const switchText = isSignup ? "Already have an account?" : "New to namenice?";
-  const switchHref = isSignup ? "/signin" : "/signup";
+  const switchHref = `${isSignup ? "/signin" : "/signup"}?next=${encodeURIComponent(next)}`;
   const switchLabel = isSignup ? "Sign in" : "Create an account";
   const authForm = `<section class="auth-panel">
       <h1 class="auth-panel__heading">${title}</h1>
@@ -402,8 +405,8 @@ app.get("/", async (c) => {
 });
 
 
-app.get("/signin", (c) => { const next = c.req.query("next") || "/domains"; return c.html(shell("Sign in — Namenice", signinPage("signin", c.env) + authScript(next), { activeTab: "" })); });
-app.get("/signup", (c) => { const next = c.req.query("next") || "/domains"; return c.html(shell("Create account — Namenice", signinPage("signup", c.env) + authScript(next), { activeTab: "" })); });
+app.get("/signin", (c) => { const next = safeReturnTarget(c.req.query("next")); return c.html(shell("Sign in — Namenice", signinPage("signin", c.env, next) + authScript(next), { activeTab: "" })); });
+app.get("/signup", (c) => { const next = safeReturnTarget(c.req.query("next")); return c.html(shell("Create account — Namenice", signinPage("signup", c.env, next) + authScript(next), { activeTab: "" })); });
 app.get("/sign-in", (c) => c.redirect("/signin", 301));
 app.get("/login", (c) => c.redirect("/signin", 302));
 
@@ -572,8 +575,11 @@ app.get("/cart", async (c) => {
 
 app.get("/checkout", async (c) => {
   const user = await getSessionUser(c);
+  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   let orgId = Number(c.req.query("org") || 1);
-  if (user) { const explicit = await requireExplicitOrg(c, user.email); if (!explicit.ok) return explicit.response; orgId = explicit.orgId; }
+  const explicit = await requireExplicitOrg(c, user.email);
+  if (!explicit.ok) return explicit.response;
+  orgId = explicit.orgId;
   const body = `
     <section class="search-toolbar"><h1 class="search-toolbar__heading">Checkout</h1><p class="taken-domain__dates">Complete your Domain Purchase with Stripe or your Organization Balance.</p></section>
     <section class="results-block">

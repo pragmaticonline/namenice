@@ -5,22 +5,14 @@ import workerImport from "../src/index.ts";
 
 const worker = workerImport.fetch ? workerImport : workerImport.default;
 
-test("Account can submit a cart Domain as a real Purchase", async () => {
+test("signed-out visitor authenticates before seeing registrant details", async () => {
   const response = await worker.fetch(
     new Request("http://localhost/checkout"),
     {},
     { waitUntil() {}, passThroughOnException() {} },
   );
-  const html = await response.text();
-
-  assert.equal(response.status, 200);
-  assert.match(html, /action="\/checkout\?org=/);
-  assert.match(html, /name="domains"/);
-  assert.match(html, /name="contact_name"/);
-  assert.match(html, /name="contact_email"/);
-  assert.doesNotMatch(html, /Pay with Stripe \(demo\)/);
-  assert.doesNotMatch(html, /addOrder\(/);
-  assert.doesNotMatch(html, /one Domain at a time/);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/signin?next=%2Fcheckout");
 });
 
 test("unverified cart checkout cannot clear purchased Domains", async () => {
