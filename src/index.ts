@@ -4,22 +4,19 @@ import { createTopupCheckoutSession, createDomainCheckoutWithBalanceFallback, cr
 import { debitBalance, getOrgBalance, creditTopup, type BalanceEnv } from "./balance.ts";
 import { can, createAuth } from "./auth.ts";
 import { listDns, addDns, removeDns, updateDns, DNS_TYPES } from "./dns.ts";
-import { dynadotConfigured, getDynadotBaseUrl, searchDomain, isSandboxEnabled, createContact, registerDomain, renewDomain, getTransferAuthCode, transferDomainIn, setDnssec, clearDnssec } from "./dynadot.ts";
+import { dynadotConfigured, getDynadotBaseUrl, isSandboxEnabled, createContact, registerDomain, renewDomain, getTransferAuthCode, transferDomainIn, setDnssec, clearDnssec } from "./dynadot.ts";
 import { dispatchWebhooks } from "./webhooks.ts";
 import { authenticateApiKey } from "./api-keys.ts";
 import { fulfillPaidDomain } from "./fulfillment.ts";
 import { renewRegisteredDomain } from "./renewal.ts";
+import { getDomainQuote } from "./availability.ts";
 
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
-function dynadotFlag(value:unknown):boolean {
-  if (value === true || value === 1) return true;
-  if (typeof value !== "string") return false;
-  return ["yes", "true", "1"].includes(value.trim().toLowerCase());
-}
+function returnTarget(c:any):string { const url = new URL(c.req.url); return url.pathname + url.search; }
 
 function wordmarkHtml(): string {
   return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
@@ -426,17 +423,11 @@ app.get("/search", async (c) => {
     let status: "available"|"unavailable"|"premium" = "unavailable";
     if (registrarReady) {
       try {
-        const r = await searchDomain(c.env as any, domain, { show_price: true });
-        raw = r.raw;
-        if (r.ok) {
-          const d = r.data as any;
-          available = dynadotFlag(d?.available) || d?.status === "available" || dynadotFlag(d?.search_results?.[domain]?.available);
-          const pl = d?.priceList?.[0] || d?.price_list?.[0] || d?.search_results?.[domain]?.priceList?.[0];
-          if (pl?.registration_price) price = (Number(pl.registration_price)+2).toFixed(2);
-          else if (d?.price) price = (Number(d.price)+2).toFixed(2);
-          const isPremium = dynadotFlag(d?.premium) || dynadotFlag(d?.search_results?.[domain]?.premium);
-          if (available && isPremium) status = "premium";
-          else status = available ? "available" : "unavailable";
+        const result = await getDomainQuote(c.env as any, domain);
+        if (result.ok) {
+          available = result.quote.available;
+          price = result.quote.amountCents == null ? null : (result.quote.amountCents / 100).toFixed(2);
+          status = result.quote.premium ? "premium" : available ? "available" : "unavailable";
         }
       } catch {}
     } else {
@@ -450,11 +441,6 @@ app.get("/search", async (c) => {
       : status === "available" ? "Ready when you are. Review the price before you continue."
       : status === "premium" ? "Premium domains have a separate purchase price. Renewal details come next."
       : "This name is already registered. Here are a few close options.";
-    const suggestions = status === "unavailable" ? [
-      { domain: `try${domain}`, price: "$14.99", cadence: "/ year", status: "available" },
-      { domain: `get${domain}`, price: "$14.99", cadence: "/ year", status: "available" },
-    ] : [];
-    if (!registrarReady) suggestions.length = 0;
     resultHtml = `<div class="results-hero your-search-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);flex-wrap:wrap;">
         <div>
@@ -462,14 +448,11 @@ app.get("/search", async (c) => {
           <div style="margin-top:var(--space-2);">${badge}</div>
         </div>
         <div style="text-align:right;"><strong style="font-size:20px;">${priceStr}</strong><span style="color:var(--color-text-secondary);font-size:12px;display:block;">${status==="available"?" / first year": status==="premium"?"Premium purchase price":"Try an alternative"}</span></div>
-        ${registrarReady ? `<button class="button button--primary" type="button" data-add-domain="${esc(domain)}" data-price="${price||""}">${status==="available"?"Add to cart":"See options"}</button>` : ""}
+        ${registrarReady && available ? `<button class="button button--primary" type="button" data-add-domain="${esc(domain)}" data-price="${price||""}">Add to cart</button>` : ""}
         <button class="compare-table__favorite" type="button" data-favorite-domain="${esc(domain)}" aria-label="Favorite ${esc(domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button>
       </div>
       <p class="search-result__message" style="margin-top:var(--space-4);">${esc(msg)}</p>
     </div>`;
-    if (suggestions.length) {
-      suggestionsHtml = `<div class="results-block"><p class="results-block__label">Suggestions</p><div class="row-group">${suggestions.map(s=>`<div class="domain-result"><div><h3 class="domain-result__name">${esc(s.domain)}</h3><div class="domain-result__status">${statusBadgeHtml(s.status)}</div></div><div class="domain-result__price"><strong>${s.price}</strong><span>${s.cadence}</span></div><button class="compare-table__favorite" type="button" data-favorite-domain="${esc(s.domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><button class="text-action" type="button" data-add-domain="${esc(s.domain)}" data-price="${s.price}">Add</button></div>`).join("")}</div></div>`;
-    }
   } else {
     resultHtml = `<div class="results-block"><p class="taken-domain__dates">Enter a name above to check availability — any TLD.</p></div>`;
   }
@@ -493,20 +476,6 @@ app.get("/search", async (c) => {
     </section>
     <section class="results-block"><p class="results-block__label">Your search</p>${resultHtml}</section>
     ${suggestionsHtml}
-    <section class="results-block">
-      <p class="results-block__label">Compare</p>
-      <table class="compare-table">
-        <thead><tr><th>Domain</th><th>Status</th><th>Price</th><th>Renewal</th><th></th></tr></thead>
-        <tbody id="compare-table-body"></tbody>
-      </table>
-    </section>
-    <section class="results-block">
-      <p class="results-block__label">Names like this</p>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:var(--space-6);">
-        <div><p style="font-weight:600;">Shorter</p><ul><li><a class="text-action" href="/search?q=namnice">namnice.net</a></li><li><a class="text-action" href="/search?q=nameco">nameco.net</a></li><li><a class="text-action" href="/search?q=niceco">niceco.net</a></li></ul></div>
-        <div><p style="font-weight:600;">More descriptive</p><ul><li><a class="text-action" href="/search?q=namenicehub">namenicehub.net</a></li><li><a class="text-action" href="/search?q=namenicehq">namenicehq.net</a></li><li><a class="text-action" href="/search?q=namenicepro">namenicepro.net</a></li></ul></div>
-      </div>
-    </section>
     <script type="module">
       import { addToCart, addToHistory, toggleFavorite, isFavorited } from "/assets/js/state.js";
       import { pulseCartBadge } from "/assets/js/cart-drawer.js";
@@ -548,15 +517,12 @@ app.get("/favorites", async (c) => {
     <section class="results-block" id="favorites-list"><p class="taken-domain__dates">Loading\\u2026</p></section>
     <script type="module">
       import { getFavorites, toggleFavorite } from "/assets/js/state.js";
-      import { addToCart, isFavorited } from "/assets/js/state.js";
-      import { pulseCartBadge } from "/assets/js/cart-drawer.js";
       function render(){
         const list = getFavorites();
         const el = document.getElementById("favorites-list");
         if(list.length===0){ el.innerHTML='<p class="taken-domain__dates">No favorites yet. <a class="text-action" href="/search">Search domains</a> and tap the heart.</p>'; return; }
-        el.innerHTML = '<div class="row-group">'+list.map(item=>'<div class="domain-result"><div><h3 class="domain-result__name">'+item.domain+'</h3><div class="domain-result__status">'+(item.status?'<span class="status-badge status-badge--'+item.status+'">'+item.status+'</span>':'<span class="muted">Not checked yet</span>')+'</div></div><div class="domain-result__price"><strong>'+(item.price||"\\u2014")+'</strong><span>'+(item.cadence||"")+'</span></div><button class="compare-table__favorite" data-fav="'+item.domain+'" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><button class="text-action" data-add="'+item.domain+'">Add</button></div>').join("")+'</div>';
+        el.innerHTML = '<div class="row-group">'+list.map(item=>'<div class="domain-result"><div><h3 class="domain-result__name">'+item.domain+'</h3><div class="domain-result__status"><span class="muted">Availability not checked</span></div></div><button class="compare-table__favorite" data-fav="'+item.domain+'" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button><a class="text-action" href="/search?q='+encodeURIComponent(item.domain)+'">Check availability</a></div>').join("")+'</div>';
         el.querySelectorAll("[data-fav]").forEach(b=> b.addEventListener("click", ()=>{ toggleFavorite({domain:b.dataset.fav}); render(); }));
-        el.querySelectorAll("[data-add]").forEach(b=> b.addEventListener("click", ()=>{ const it=list.find(x=>x.domain===b.dataset.add); addToCart({domain:it.domain, price:it.price||"$14.99"}); pulseCartBadge(); }));
       }
       render();
     </script>
@@ -591,9 +557,10 @@ app.get("/cart", async (c) => {
         const items = getCart();
         const el = document.getElementById("cart-page");
         if(items.length===0){ el.innerHTML='<p class="taken-domain__dates">Your cart is empty.</p><a class="button button--primary" href="/search">Search domains</a>'; return; }
-        const subtotal = items.length * 14.99;
+        const itemPrice = item => { const n=Number.parseFloat(String(item.price||"").replace("$","")); return Number.isFinite(n)&&n>=0?n:0; };
+        const subtotal = items.reduce((sum,item)=>sum+itemPrice(item),0);
         el.innerHTML = '<div class="cart-drawer__items" style="padding:0;">'+items.map(item=>{
-          return '<div class="cart-drawer__item" style="border:0;"><div class="cart-drawer__item-row" style="cursor:default;"><span class="cart-drawer__item-name"><strong>'+item.domain+'</strong><span class="cart-drawer__item-package">1-year registration</span></span><span class="cart-drawer__item-price">$14.99</span></div><button class="text-action" data-remove="'+item.domain+'">Remove</button></div>';
+          return '<div class="cart-drawer__item" style="border:0;"><div class="cart-drawer__item-row" style="cursor:default;"><span class="cart-drawer__item-name"><strong>'+item.domain+'</strong><span class="cart-drawer__item-package">1-year registration</span></span><span class="cart-drawer__item-price">$'+itemPrice(item).toFixed(2)+'</span></div><button class="text-action" data-remove="'+item.domain+'">Remove</button></div>';
         }).join("")+'</div><div style="margin-top:var(--space-6);display:flex;justify-content:space-between;align-items:center;border-top:var(--border-default);padding-top:var(--space-5);"><span>Subtotal</span><strong>$'+subtotal.toFixed(2)+'</strong></div><div style="margin-top:var(--space-6);"><a class="button button--primary" href="/checkout">Continue to checkout</a></div>';
         el.querySelectorAll("[data-remove]").forEach(b=> b.addEventListener("click", ()=>{ removeFromCart(b.dataset.remove); render(); }));
       }
@@ -655,7 +622,8 @@ app.get("/checkout", async (c) => {
       else {
         const domains=items.map(item=>item.domain).slice(0,10);
         document.getElementById("checkout-domains").value=domains.join(",");
-        summary.innerHTML=domains.map(domain=>'<div style="display:flex;justify-content:space-between;padding:var(--space-2) 0;border-bottom:var(--border-default);"><span>'+domain+'</span><span>$14.99</span></div>').join('')+'<div style="display:flex;justify-content:space-between;padding:var(--space-4) 0;font-weight:600"><span>Total</span><span>$'+(domains.length*14.99).toFixed(2)+'</span></div>';
+        const priceFor = domain => { const item=items.find(entry=>entry.domain===domain); const n=Number.parseFloat(String(item?.price||"").replace("$","")); return Number.isFinite(n)&&n>=0?n:0; };
+        summary.innerHTML=domains.map(domain=>'<div style="display:flex;justify-content:space-between;padding:var(--space-2) 0;border-bottom:var(--border-default);"><span>'+domain+'</span><span>$'+priceFor(domain).toFixed(2)+'</span></div>').join('')+'<div style="display:flex;justify-content:space-between;padding:var(--space-4) 0;font-weight:600"><span>Estimated total</span><span>$'+domains.reduce((sum,domain)=>sum+priceFor(domain),0).toFixed(2)+'</span></div><p class="taken-domain__dates">Availability and final price are rechecked before Stripe.</p>';
         list.innerHTML='<p class="taken-domain__dates"><strong>'+domains.length+'</strong> Domain'+(domains.length===1?' is':'s are')+' ready to purchase.</p>';
       }
     </script>
@@ -665,7 +633,7 @@ app.get("/checkout", async (c) => {
 
 app.post("/checkout", async (c) => {
   const user = await getSessionUser(c);
-  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const explicit = await requireExplicitOrg(c, user.email);
   if (!explicit.ok) return explicit.response;
   const orgId = explicit.orgId;
@@ -675,6 +643,15 @@ app.post("/checkout", async (c) => {
   const form = await c.req.formData();
   const domains = [...new Set(String(form.get("domains") || "").split(",").map((domain) => domain.toLowerCase().trim()).filter(Boolean))];
   if (domains.length < 1 || domains.length > 10) return c.text("Cart must contain 1–10 Domains", 400);
+  if (!dynadotConfigured(c.env as any)) return c.text("Domain search is temporarily unavailable", 503);
+  const amountCentsByDomain:Record<string,number> = {};
+  for (const domain of domains) {
+    const result = await getDomainQuote(c.env as any, domain);
+    if (!result.ok) return c.text(result.error, 503);
+    if (!result.quote.available) return c.text(`${domain} is no longer available`, 409);
+    if (result.quote.amountCents == null) return c.text(`No authoritative price for ${domain}`, 409);
+    amountCentsByDomain[domain] = result.quote.amountCents;
+  }
   const contact = {
     name: String(form.get("contact_name") || "").trim().slice(0, 80),
     email: String(form.get("contact_email") || user.email).trim().slice(0, 120),
@@ -694,7 +671,7 @@ app.post("/checkout", async (c) => {
   }
   const balance = await c.env.DB.prepare("SELECT stripe_customer_id FROM org_balances WHERE org_id=?").bind(orgId).first().catch(() => null) as any;
   const origin = new URL(c.req.url).origin;
-  const session = await createCartCheckoutSession(c.env as any, { orgId, accountId:member.accountId, email:contact.email, customerId:balance?.stripe_customer_id || null, domains, amountCentsEach:1499, successUrl:`${origin}/checkout/success?org=${orgId}&session_id={CHECKOUT_SESSION_ID}`, cancelUrl:`${origin}/checkout?org=${orgId}` });
+  const session = await createCartCheckoutSession(c.env as any, { orgId, accountId:member.accountId, email:contact.email, customerId:balance?.stripe_customer_id || null, domains, amountCentsByDomain, successUrl:`${origin}/checkout/success?org=${orgId}&session_id={CHECKOUT_SESSION_ID}`, cancelUrl:`${origin}/checkout?org=${orgId}` });
   return c.redirect(session.url, 303);
 });
 
@@ -711,7 +688,7 @@ app.get("/checkout/success", async (c) => {
 
 app.get("/orders", async (c) => {
   const user = await getSessionUser(c);
-  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const explicit = await requireExplicitOrg(c, user.email);
   if (!explicit.ok) return explicit.response;
   const orgId = explicit.orgId;
@@ -724,7 +701,7 @@ app.get("/orders", async (c) => {
 
 app.get("/account", async (c) => {
   const user = await getSessionUser(c);
-  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const explicit = await requireExplicitOrg(c, user.email);
   if (!explicit.ok) return explicit.response;
   const orgId = explicit.orgId;
@@ -835,7 +812,7 @@ app.get("/billing", async (c) => {
   if (!(expBilling as any).ok) return (expBilling as any).response;
   const orgId = (expBilling as any).orgId as number;
   const member = await requireOrgMember(c, orgId);
-  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
   const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
@@ -893,7 +870,7 @@ app.get("/settings", async (c) => {
   if (!(expSettings as any).ok) return (expSettings as any).response;
   const orgId = (expSettings as any).orgId as number;
   const member = await requireOrgMember(c, orgId);
-  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const org = await c.env.DB.prepare("SELECT is_company, title FROM organizations WHERE id=?").bind(orgId).first().catch(()=>null) as any;
   const isCompanyFlag = !!org?.is_company;
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
@@ -985,7 +962,7 @@ app.get("/domains", async (c) => {
   if (!(expDomains as any).ok) return (expDomains as any).response;
   const orgId = (expDomains as any).orgId as number;
   const member = await requireOrgMember(c, orgId);
-  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
   const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
@@ -1007,25 +984,11 @@ app.post("/domains/search", async (c) => {
   const form = await c.req.formData();
   const domain = String(form.get("domain")||"").toLowerCase().trim();
   if (!domain) return c.text("domain required", 400);
-  let available = false; let price: string | null = null; let raw: any = null;
-  if (dynadotConfigured(c.env as any)) {
-    const r = await searchDomain(c.env as any, domain, { show_price: true });
-    raw = r.raw;
-    if (r.ok) {
-      const d = r.data as any;
-      available = dynadotFlag(d?.available) || d?.status === "available";
-      const pl = d?.priceList?.[0] || d?.price_list?.[0];
-      if (pl?.registration_price) {
-        const n = Number(pl.registration_price);
-        price = (n + 2).toFixed(2);
-      }
-    } else {
-      return c.html(shell("Search", `<div class=card><p>Dynadot error: ${esc(String(r.error||""))}</p><p class=muted>${esc(JSON.stringify(raw||{}).slice(0,800))}</p><a href="/domains?org=${orgId}">← Back</a></div>`), 502);
-    }
-  } else {
-    available = domain.endsWith(".test") || false;
-    price = "14.99";
-  }
+  if (!dynadotConfigured(c.env as any)) return c.text("Domain search is temporarily unavailable", 503);
+  const quoteResult = await getDomainQuote(c.env as any, domain);
+  if (!quoteResult.ok) return c.text(quoteResult.error, 503);
+  const available = quoteResult.quote.available;
+  const price = quoteResult.quote.amountCents == null ? null : (quoteResult.quote.amountCents/100).toFixed(2);
   const balance = await getOrgBalance(c.env as any, orgId);
   return c.html(shell("Search — "+esc(domain), `<div class=card><h3>${esc(domain)} — ${available?'<span class=badge>available</span>':'<span class=muted>taken</span>'}</h3>${price?`<p>Price: $${price} /yr <span class=muted>incl. $2 fee</span></p>`:""}${available?`<form method=post action="/domains/buy?org=${orgId}" style="display:grid;gap:.6rem;max-width:560px">
       <input type=hidden name=domain value="${esc(domain)}">
@@ -1082,10 +1045,14 @@ app.post("/domains/buy", async (c) => {
   if (!contact.name || !contact.email || !contact.phone_number || !contact.address1 || !contact.city || !contact.zip || !contact.country) {
     return c.html(shell("Buy — missing fields", `<div class=card><p>Please fill name, email, phone, address, city, zip, country.</p><a href="/domains?org=${orgId}">← Back</a></div>`), 400);
   }
-  const amountCents = 1499 + (duration-1)*1299;
+  if (!dynadotConfigured(c.env as any)) return c.text("Domain search is temporarily unavailable", 503);
+  const quoteResult = await getDomainQuote(c.env as any, domain);
+  if (!quoteResult.ok) return c.text(quoteResult.error, 503);
+  if (!quoteResult.quote.available) return c.text(`${domain} is no longer available`, 409);
+  if (quoteResult.quote.amountCents == null) return c.text(`No authoritative price for ${domain}`, 409);
+  const amountCents = quoteResult.quote.amountCents * duration;
   const now = Math.floor(Date.now()/1000);
   const doDynadotRegister = async (): Promise<{ok:boolean; error?:string}> => {
-    if (!dynadotConfigured(c.env as any)) return {ok:true};
     try {
       const cc = await createContact(c.env as any, { name: contact.name, email: contact.email, phone_number: contact.phone_number, phone_cc: contact.phone_cc, address1: contact.address1, city: contact.city, state: contact.state, zip: contact.zip, country: contact.country, organization: contact.organization });
       if (!cc.ok || !cc.data?.contact_id) return {ok:false, error: cc.error || "Dynadot contact failed"};
@@ -1125,7 +1092,7 @@ app.get("/domains/:domain/dns", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
-  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const domain = c.req.param("domain").toLowerCase();
   const exists = await c.env.DB.prepare("SELECT 1 FROM domains WHERE org_id=? AND domain=?").bind(orgId, domain).first().catch(()=>null);
   if (!exists) return c.html(shell("Not found", `<div class=card><p>Domain ${esc(domain)} not in org ${orgId}. <a href="/domains?org=${orgId}">← Back</a></p></div>`, { user, orgId }), 404);
@@ -1423,7 +1390,7 @@ app.get("/api/keys", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
-  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const rows = await c.env.DB.prepare("SELECT id, label, prefix, scopes, last_used_at, expires_at, created_at FROM api_keys WHERE org_id=? ORDER BY created_at DESC").bind(orgId).all().catch(()=>({results:[]})) as any;
   const list = (rows.results||[]).map((r:any)=>`<tr><td><code>${esc(r.prefix)}***</code></td><td>${esc(r.label)}</td><td class=muted>${esc(r.scopes)}</td><td>${r.last_used_at?new Date(r.last_used_at*1000).toISOString().slice(0,10):"—"}</td><td><form method=post action="/api/keys/revoke?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Revoke</button></form></td></tr>`).join("") || `<tr><td colspan=5 class=muted>No keys — create one below</td></tr>`;
   return c.html(shell("API Keys — Namenice", `<div class=card><h3 style=margin:0>API keys — org ${orgId}</h3><table><thead><tr><th>Key</th><th>Label</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Create key</h3><form method=post action="/api/keys?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=label placeholder="CI / Terraform" required><select name=scopes><option value="domains:read,dns:read">read</option><option value="domains:read,dns:read,dns:write" selected>dns:write</option><option value="domains:read,dns:read,dns:write,billing:read">full</option></select><button class=btn>Create — shows once</button></form><p class=muted style="font-size:.82rem">Use <code>Authorization: Bearer nn_&lt;token&gt;</code> and <code>X-Org: ${orgId}</code>. Configure signed event delivery from the <a href="/webhooks?org=${orgId}">Webhooks page</a>.</p></div>`, { user, orgId }));
@@ -1453,7 +1420,7 @@ app.get("/webhooks", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
-  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const rows = await c.env.DB.prepare("SELECT id, url, events, active, created_at FROM webhooks WHERE org_id=? ORDER BY created_at DESC").bind(orgId).all().catch(()=>({results:[]})) as any;
   const list = (rows.results||[]).map((r:any)=>`<tr><td style="word-break:break-all">${esc(r.url)}</td><td>${esc(r.events)}</td><td>${r.active?"active":"paused"}</td><td><form method=post action="/webhooks/delete?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Delete</button></form></td></tr>`).join("") || `<tr><td colspan=4 class=muted>No webhooks — add one for dns.updated / domain.renewed</td></tr>`;
   return c.html(shell("Webhooks — Namenice", `<div class=card><h3 style=margin:0>Webhooks — org ${orgId}</h3><table><thead><tr><th>URL</th><th>Events</th><th>Status</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Add webhook</h3><form method=post action="/webhooks?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=url placeholder="https://example.com/hook" required style="flex:1"><select name=events><option value="dns.updated">dns.updated</option><option value="domain.renewed">domain.renewed</option><option value="domain.registered">domain.registered</option><option value="*">* (all)</option></select><button class=btn>Create</button></form><p class=muted style="font-size:.82rem">Signed with <code>X-Namenice-Signature: sha256=hex(HMAC secret, body)</code>. The CLI and Terraform provider are included in this repository.</p></div><div class=card><h3 style=margin:0>CLI / Terraform</h3><pre style="background:#111;color:#0f0;padding:.8rem;border-radius:8px;overflow:auto">npm link
@@ -1497,7 +1464,7 @@ app.get("/audit", async (c) => {
   const orgId = Number(c.req.query("org") || 1);
   const member = await requireOrgMember(c, orgId);
   const user = await getSessionUser(c);
-  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(c.req.url)}`, 302);
+  if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const page = Math.max(1, parseInt(c.req.query("page")||"1",10)||1);
   try {
     const { entries, hasMore } = await auditReport(c.env as any, orgId, 90, page, 50);

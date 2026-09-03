@@ -54,15 +54,17 @@ export function createDomainCheckoutWithBalanceFallback(env: StripeEnv, input: {
   return stripeRequest<{id:string;url:string}>(env,"checkout/sessions",p);
 }
 
-export function createCartCheckoutSession(env: StripeEnv, input: { orgId:number; accountId:number; email:string; customerId?:string|null; domains:string[]; amountCentsEach:number; successUrl:string; cancelUrl:string }) {
+export function createCartCheckoutSession(env: StripeEnv, input: { orgId:number; accountId:number; email:string; customerId?:string|null; domains:string[]; amountCentsEach?:number; amountCentsByDomain?:Record<string,number>; successUrl:string; cancelUrl:string }) {
   if (input.domains.length < 1 || input.domains.length > 10) throw new Error("Cart must contain 1–10 Domains");
   const domains = input.domains.map((domain) => domain.toLowerCase().trim());
   if (domains.some((domain) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(domain))) throw new Error("Cart contains an invalid Domain");
   const p = new URLSearchParams();
   p.set("mode", "payment");
   domains.forEach((domain, index) => {
+    const amount = input.amountCentsByDomain?.[domain] ?? input.amountCentsEach;
+    if (!Number.isInteger(amount) || Number(amount) < 1) throw new Error(`Missing authoritative price for ${domain}`);
     p.set(`line_items[${index}][price_data][currency]`, "usd");
-    p.set(`line_items[${index}][price_data][unit_amount]`, String(input.amountCentsEach));
+    p.set(`line_items[${index}][price_data][unit_amount]`, String(amount));
     p.set(`line_items[${index}][price_data][product_data][name]`, `Domain ${domain} — 1y`);
     p.set(`line_items[${index}][quantity]`, "1");
   });

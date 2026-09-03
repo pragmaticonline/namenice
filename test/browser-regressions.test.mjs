@@ -61,6 +61,7 @@ test("Dynadot textual no premium flag renders an available standard Domain", asy
     if (String(url).includes("api.dynadot.com")) {
       return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"3.44" } }), { status:200, headers:{ "content-type":"application/json" } });
     }
+    if (String(url).includes("rdap.org")) return new Response("", { status:404 });
     return originalFetch(url);
   };
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -72,4 +73,18 @@ test("Dynadot textual no premium flag renders an available standard Domain", asy
   const html = await response.text();
   assert.match(html, /status-badge--available/);
   assert.doesNotMatch(html, /Premium domain/);
+});
+
+test("a registered RDAP Domain is never offered even when registrar flags it available", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("api.dynadot.com")) return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"3.44" } }), { status:200 });
+    if (String(url).includes("rdap.org")) return new Response(JSON.stringify({ objectClassName:"domain", ldhName:"GITHUB.COM" }), { status:200 });
+    return originalFetch(url);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const response = await worker.fetch(new Request("http://localhost/search?q=github.com"), { DYNADOT_API_KEY:"prod_test_key", DYNADOT_API_SECRET:"prod_test_secret" });
+  const html = await response.text();
+  assert.match(html, /Unavailable/);
+  assert.doesNotMatch(html, /data-add-domain="github\.com"/);
 });

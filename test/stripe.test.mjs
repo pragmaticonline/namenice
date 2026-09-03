@@ -76,13 +76,15 @@ test("cart checkout sends every Domain as a Stripe line item", async (t) => {
 
   const session = await createCartCheckoutSession({ STRIPE_SECRET_KEY: "sk_test" }, {
     orgId: 42, accountId: 7, email: "account@example.com",
-    domains: ["one.example", "two.example"], amountCentsEach: 1499,
+    domains: ["one.example", "two.example"], amountCentsByDomain:{ "one.example":544, "two.example":700 },
     successUrl: "https://namenice.test/domains", cancelUrl: "https://namenice.test/checkout",
   });
 
   assert.equal(session.url, "https://checkout.stripe.test/cart");
   assert.equal(params.get("line_items[0][price_data][product_data][name]"), "Domain one.example — 1y");
   assert.equal(params.get("line_items[1][price_data][product_data][name]"), "Domain two.example — 1y");
+  assert.equal(params.get("line_items[0][price_data][unit_amount]"), "544");
+  assert.equal(params.get("line_items[1][price_data][unit_amount]"), "700");
   assert.equal(params.get("metadata[type]"), "domain_cart_purchase");
   assert.equal(params.get("metadata[domains]"), "one.example,two.example");
 });

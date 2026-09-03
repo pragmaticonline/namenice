@@ -6,7 +6,12 @@ import {
 let injected = false;
 
 function cartSubtotal(items) {
-  return items.length * 14.99;
+  return items.reduce((sum, item) => sum + itemPrice(item), 0);
+}
+
+function itemPrice(item) {
+  const amount = Number.parseFloat(String(item.price || "").replace("$", ""));
+  return Number.isFinite(amount) && amount >= 0 ? amount : 0;
 }
 
 export function updateCartBadges() {
@@ -73,7 +78,7 @@ function renderCartItem(item) {
           <span class="cart-drawer__item-package">1-year registration</span>
         </span>
         <span class="cart-drawer__item-right">
-          <span class="cart-drawer__item-price">$14.99</span>
+          <span class="cart-drawer__item-price">$${itemPrice(item).toFixed(2)}</span>
         </span>
       </div>
       <button type="button" class="cart-drawer__remove" data-remove-domain="${item.domain}" aria-label="Remove ${item.domain} from cart">Remove</button>
