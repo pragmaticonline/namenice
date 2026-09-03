@@ -1,4 +1,5 @@
 * { box-sizing: border-box; }
+html { overflow-y: scroll; scrollbar-gutter: stable; }
 body { margin: 0; background: var(--color-surface-primary); color: var(--color-text-primary); font-family: var(--font-ui); }
 button, input { font: inherit; }
 button { cursor: pointer; }

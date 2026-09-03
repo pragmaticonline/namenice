@@ -11,6 +11,11 @@ test("search focus is drawn around the composite control, not inside the input",
   assert.match(css, /signature-search__frame:focus-within\s*\{[^}]*border-color/s);
 });
 
+test("all pages reserve scrollbar space to prevent navigation jitter", () => {
+  const css = readFileSync(new URL("../public/assets/css/base.css", import.meta.url), "utf8");
+  assert.match(css, /html\s*\{[^}]*(?:overflow-y\s*:\s*scroll|scrollbar-gutter\s*:\s*stable)/s);
+});
+
 test("public HTML identifies its own canonical and Open Graph URL", async () => {
   const response = await worker.fetch(new Request("http://localhost/search?q=example"), {});
   const html = await response.text();
