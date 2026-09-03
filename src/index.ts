@@ -15,6 +15,12 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+function dynadotFlag(value:unknown):boolean {
+  if (value === true || value === 1) return true;
+  if (typeof value !== "string") return false;
+  return ["yes", "true", "1"].includes(value.trim().toLowerCase());
+}
+
 function wordmarkHtml(): string {
   return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
 }
@@ -424,12 +430,12 @@ app.get("/search", async (c) => {
         raw = r.raw;
         if (r.ok) {
           const d = r.data as any;
-          available = !!d?.available || d?.status === "available" || d?.search_results?.[domain]?.available;
+          available = dynadotFlag(d?.available) || d?.status === "available" || dynadotFlag(d?.search_results?.[domain]?.available);
           const pl = d?.priceList?.[0] || d?.price_list?.[0] || d?.search_results?.[domain]?.priceList?.[0];
           if (pl?.registration_price) price = (Number(pl.registration_price)+2).toFixed(2);
           else if (d?.price) price = (Number(d.price)+2).toFixed(2);
-          const isPremium = d?.premium || d?.search_results?.[domain]?.premium;
-          if (isPremium) status = "premium";
+          const isPremium = dynadotFlag(d?.premium) || dynadotFlag(d?.search_results?.[domain]?.premium);
+          if (available && isPremium) status = "premium";
           else status = available ? "available" : "unavailable";
         }
       } catch {}
@@ -1007,7 +1013,7 @@ app.post("/domains/search", async (c) => {
     raw = r.raw;
     if (r.ok) {
       const d = r.data as any;
-      available = !!d?.available || d?.status === "available";
+      available = dynadotFlag(d?.available) || d?.status === "available";
       const pl = d?.priceList?.[0] || d?.price_list?.[0];
       if (pl?.registration_price) {
         const n = Number(pl.registration_price);

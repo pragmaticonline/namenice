@@ -54,3 +54,22 @@ test("signed-out visitors cannot see or open Domain transfer controls", async ()
   assert.equal(transfer.status, 302);
   assert.equal(transfer.headers.get("location"), "/signin?next=%2Ftransfer");
 });
+
+test("Dynadot textual no premium flag renders an available standard Domain", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("api.dynadot.com")) {
+      return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"3.44" } }), { status:200, headers:{ "content-type":"application/json" } });
+    }
+    return originalFetch(url);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const response = await worker.fetch(new Request("http://localhost/search?q=boooffffffewfeffewfpop.com"), {
+    DYNADOT_API_KEY:"prod_test_key",
+    DYNADOT_API_SECRET:"prod_test_secret",
+  });
+  const html = await response.text();
+  assert.match(html, /status-badge--available/);
+  assert.doesNotMatch(html, /Premium domain/);
+});
