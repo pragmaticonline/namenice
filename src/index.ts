@@ -440,14 +440,14 @@ app.get("/search", async (c) => {
     const msg = !registrarReady ? "Domain search is temporarily unavailable. Please try again later."
       : status === "available" ? "Ready when you are. Review the price before you continue."
       : status === "premium" ? "Premium domains have a separate purchase price. Renewal details come next."
-      : "This name is already registered. Here are a few close options.";
+      : "This name is already registered.";
     resultHtml = `<div class="results-hero your-search-panel">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);flex-wrap:wrap;">
         <div>
           <h2 style="margin:0;font-size:20px;letter-spacing:-.02em;">${esc(domain)}</h2>
           <div style="margin-top:var(--space-2);">${badge}</div>
         </div>
-        <div style="text-align:right;"><strong style="font-size:20px;">${priceStr}</strong><span style="color:var(--color-text-secondary);font-size:12px;display:block;">${status==="available"?" / first year": status==="premium"?"Premium purchase price":"Try an alternative"}</span></div>
+        <div style="text-align:right;"><strong style="font-size:20px;">${priceStr}</strong><span style="color:var(--color-text-secondary);font-size:12px;display:block;">${status==="available"?" / first year": status==="premium"?"Premium purchase price":"Not for sale"}</span></div>
         ${registrarReady && available ? `<button class="button button--primary" type="button" data-add-domain="${esc(domain)}" data-price="${price||""}">Add to cart</button>` : ""}
         <button class="compare-table__favorite" type="button" data-favorite-domain="${esc(domain)}" aria-label="Favorite ${esc(domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button>
       </div>
@@ -549,7 +549,7 @@ app.get("/history", async (c) => {
 app.get("/cart", async (c) => {
   const user = await getSessionUser(c);
   const body = `
-    <section class="search-toolbar"><h1 class="search-toolbar__heading">Your cart</h1><p class="taken-domain__dates">Domain registrations are $14.99 each for one year.</p></section>
+    <section class="search-toolbar"><h1 class="search-toolbar__heading">Your cart</h1><p class="taken-domain__dates">Each registration price is rechecked before payment.</p></section>
     <section class="results-block" id="cart-page"><p class="taken-domain__dates">Loading\\u2026</p></section>
     <script type="module">
       import { getCart, removeFromCart } from "/assets/js/state.js";

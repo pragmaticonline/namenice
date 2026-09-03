@@ -88,4 +88,12 @@ test("a registered RDAP Domain is never offered even when registrar flags it ava
   const html = await response.text();
   assert.match(html, /Unavailable/);
   assert.doesNotMatch(html, /data-add-domain="github\.com"/);
+  assert.doesNotMatch(html, /close options/);
+});
+
+test("cart copy does not promise a fixed price before server revalidation", async () => {
+  const response = await worker.fetch(new Request("http://localhost/cart"), {});
+  const html = await response.text();
+  assert.doesNotMatch(html, /registrations are \$14\.99 each/i);
+  assert.match(html, /price.*rechecked/i);
 });
