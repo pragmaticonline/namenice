@@ -72,7 +72,7 @@ function shell(title: string, body: string, opts?: { user?: { email:string } | n
       </div>
     </nav>`;
   const accountMenuUser = user ? esc(user.email) : "namenice";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+Thai:wght@400;500&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice \u2014 find a name worth owning. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+Thai:wght@400;500&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><script>window.__NAMENICE_SIGNED_IN__=${user ? "true" : "false"};window.__NAMENICE_USER__=${JSON.stringify(user?.email||"")};</script><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice \u2014 find a name worth owning. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
 import { initCartDrawer } from "/assets/js/cart-drawer.js";
 import { initAccountMenu } from "/assets/js/account-menu.js";
 try { initCartDrawer(); } catch(e) { console.warn(e); }
@@ -789,6 +789,32 @@ app.get("/transfer", async (c) => {
     <section class="results-block"><h2>Transfer out</h2><form method="post" action="/domains/transfer/out?org=${orgId}" style="display:flex;gap:.5rem"><input class="field" name="domain" placeholder="example.com" required><button class="button">Request fresh auth code</button></form></section>
   `;
   return c.html(shell("Transfer — Namenice", body, { user, orgId, activeTab: "transfer" }));
+});
+
+
+app.get("/api/search", async (c) => {
+  const raw = (c.req.query("q") || c.req.query("domain") || "").trim().toLowerCase();
+  if (!raw) return c.json({ error: "q required" }, 400);
+  const domain = raw.includes(".") ? raw : raw + ".net";
+  if (!isValidSearchDomain(domain)) return c.json({ error: "Enter a valid domain name", domain }, 400);
+  if (!dynadotConfigured(c.env as any)) return c.json({ error: "Domain search is temporarily unavailable", domain }, 503);
+  const quote = await getDomainQuote(c.env as any, domain);
+  if (!quote.ok) return c.json({ error: quote.error, domain }, 503);
+  const available = quote.quote.available;
+  const status = available ? (quote.quote.amountCents && quote.quote.amountCents > 5000 ? "premium" : "available") : "unavailable";
+  return c.json({
+    domain,
+    status,
+    available,
+    price: quote.quote.amountCents == null ? null : "$" + (quote.quote.amountCents/100).toFixed(2),
+    priceCents: quote.quote.amountCents,
+    cadence: "/ first year",
+    renewalPrice: quote.quote.amountCents == null ? null : "$" + (quote.quote.amountCents/100).toFixed(2),
+    renewalCadence: "/ year",
+    message: status === "available" ? "Ready when you are. Review the price before you continue."
+      : status === "premium" ? "Premium domains have a separate purchase price."
+      : "This name is already registered."
+  });
 });
 
 app.get("/sitemap.xml", (c) => {

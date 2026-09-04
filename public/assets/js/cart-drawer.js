@@ -1,17 +1,16 @@
-import { button } from "./components.js";
+import { authNavLinks, button } from "./components.js";
 import {
-  getCart, removeFromCart, getCartCount, escapeHtml,
+  getCart, removeFromCart, setCartItemBundle, getCartCount,
+  isSignedIn, setSignedIn, checkDemoCredentials, DEMO_USERNAME,
 } from "./state.js";
+import { bundleOptions, getBundleOption } from "./mocks/bundle-options.js";
 
 let injected = false;
+let expandedDomain = null; // which cart item's bundle picker is open
+let authMode = "cart"; // 'cart' | 'signin' | 'signup' \u2014 inline, no page navigation
 
 function cartSubtotal(items) {
-  return items.reduce((sum, item) => sum + itemPrice(item), 0);
-}
-
-function itemPrice(item) {
-  const amount = Number.parseFloat(String(item.price || "").replace("$", ""));
-  return Number.isFinite(amount) && amount >= 0 ? amount : 0;
+  return items.reduce((sum, item) => sum + getBundleOption(item.bundle).price, 0);
 }
 
 export function updateCartBadges() {
@@ -26,6 +25,13 @@ export function updateCartBadges() {
 }
 
 /** Updates every [data-auth-slot] on the page (the Sign in/Create account or Signed in/Sign out area) to match the current signed-in state. Call after every page render, same as updateCartBadges. */
+export function updateAuthNav() {
+  const signedIn = isSignedIn();
+  document.querySelectorAll("[data-auth-slot]").forEach((slot) => {
+    slot.innerHTML = authNavLinks(signedIn, DEMO_USERNAME);
+  });
+}
+
 /** Notification-only feedback for Add to cart \u2014 updates the badge and gives it a brief pulse, without opening the drawer. */
 export function pulseCartBadge() {
   updateCartBadges();
@@ -41,8 +47,15 @@ function renderDrawer() {
   const panel = document.querySelector("#cart-drawer-panel");
   if (!panel) return;
 
+  if (authMode !== "cart") {
+    panel.innerHTML = renderInlineAuth();
+    bindAuthEvents();
+    return;
+  }
+
   const items = getCart();
   const subtotal = cartSubtotal(items);
+  const signedIn = isSignedIn();
 
   panel.innerHTML = `
     <div class="cart-drawer__header">
@@ -58,11 +71,21 @@ function renderDrawer() {
       <div class="cart-drawer__items">
         ${items.map((item) => renderCartItem(item)).join("")}
       </div>
+      <p class="cart-drawer__mock-note">Bundle prices shown are placeholder figures for internal review.</p>
       <div class="cart-drawer__subtotal">
         <span>Subtotal</span>
         <strong>$${subtotal.toFixed(2)}</strong>
       </div>
-      <div class="cart-drawer__actions">${button({ label: "Continue to checkout" })}</div>
+      ${signedIn ? `
+        <p class="cart-drawer__status">Signed in \u00b7 <button type="button" class="text-action" id="cart-drawer-signout">Sign out</button></p>
+        <div class="cart-drawer__actions">${button({ label: "Continue to checkout" })}</div>
+      ` : `
+        <p class="cart-drawer__status">Sign in or create an account to complete checkout.</p>
+        <div class="cart-drawer__actions">
+          ${button({ label: "Create account" })}
+          ${button({ label: "Sign in", kind: "secondary" })}
+        </div>
+      `}
     `}
   `;
 
@@ -70,21 +93,108 @@ function renderDrawer() {
 }
 
 function renderCartItem(item) {
-  const domain = escapeHtml(item.domain);
+  const isOpen = expandedDomain === item.domain;
+  const current = getBundleOption(item.bundle || "domain");
   return `
     <div class="cart-drawer__item">
-      <div class="cart-drawer__item-row">
+      <button type="button" class="cart-drawer__item-row" data-toggle-domain="${item.domain}" aria-expanded="${isOpen}">
         <span class="cart-drawer__item-name">
-          <strong>${domain}</strong>
-          <span class="cart-drawer__item-package">1-year registration</span>
+          <strong>${item.domain}</strong>
+          <span class="cart-drawer__item-package">${current.label}</span>
         </span>
         <span class="cart-drawer__item-right">
-          <span class="cart-drawer__item-price">$${itemPrice(item).toFixed(2)}</span>
+          <span class="cart-drawer__item-price">$${current.price.toFixed(2)}</span>
+          <span class="cart-drawer__chevron" aria-hidden="true">${isOpen ? "\u2303" : "\u2304"}</span>
         </span>
-      </div>
-      <button type="button" class="cart-drawer__remove" data-remove-domain="${domain}" aria-label="Remove ${domain} from cart">Remove</button>
+      </button>
+      <button type="button" class="cart-drawer__remove" data-remove-domain="${item.domain}" aria-label="Remove ${item.domain} from cart">Remove</button>
+      ${isOpen ? `
+        <div class="cart-drawer__bundle-options" role="radiogroup" aria-label="Package for ${item.domain}">
+          ${bundleOptions.map((option) => `
+            <label class="cart-drawer__bundle-option">
+              <input type="radio" name="bundle-${item.domain}" value="${option.id}" data-bundle-domain="${item.domain}" ${current.id === option.id ? "checked" : ""} />
+              <span class="cart-drawer__bundle-text">
+                <span class="cart-drawer__bundle-label">${option.label}</span>
+                <span class="cart-drawer__bundle-desc">${option.description}</span>
+              </span>
+              <span class="cart-drawer__bundle-price">$${option.price.toFixed(2)}</span>
+            </label>
+          `).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
+}
+
+function renderInlineAuth() {
+  const isSignup = authMode === "signup";
+  return `
+    <div class="cart-drawer__header">
+      <button type="button" class="cart-drawer__back" id="cart-auth-back" aria-label="Back to cart">\u2190 Back to cart</button>
+      <button type="button" id="cart-drawer-close" aria-label="Close cart">\u2715</button>
+    </div>
+    <div class="cart-drawer__auth">
+      <h2 class="cart-drawer__auth-heading">${isSignup ? "Create your account" : "Sign in to namenice"}</h2>
+      <p class="cart-drawer__auth-lede">${isSignup ? "Just enough to save your cart and check out." : "Welcome back."}</p>
+      <p class="cart-drawer__auth-lede">Demo login: username <strong>namenice</strong>, password <strong>1234</strong>.</p>
+      <form id="cart-auth-form" novalidate>
+        <div class="field-group">
+          <label class="field-label" for="cart-auth-username">Username</label>
+          <input class="field" type="text" id="cart-auth-username" placeholder="Enter your username" autocomplete="username" required />
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="cart-auth-password">Password</label>
+          <input class="field" type="password" id="cart-auth-password" placeholder="Enter your password" autocomplete="${isSignup ? "new-password" : "current-password"}" required />
+          <p class="field-help" id="cart-auth-error-help" style="color: var(--color-error);" hidden>Incorrect username or password.</p>
+        </div>
+        ${button({ label: isSignup ? "Create account" : "Sign in" })}
+      </form>
+      <p class="auth-switch">
+        ${isSignup ? "Already have an account?" : "New to namenice?"}
+        <a href="#" id="cart-auth-switch">${isSignup ? "Sign in" : "Create an account"}</a>
+      </p>
+      <p class="auth-note">This is a presentation demo \u2014 the only working login is the demo account above.</p>
+    </div>
+  `;
+}
+
+function bindAuthEvents() {
+  document.querySelector("#cart-drawer-close").addEventListener("click", closeCartDrawer);
+  document.querySelector("#cart-auth-back").addEventListener("click", () => {
+    authMode = "cart";
+    renderDrawer();
+  });
+  document.querySelector("#cart-auth-switch").addEventListener("click", (event) => {
+    event.preventDefault();
+    authMode = authMode === "signup" ? "signin" : "signup";
+    renderDrawer();
+  });
+
+  const form = document.querySelector("#cart-auth-form");
+  const submitButton = form.querySelector(".button--primary");
+  submitButton.type = "submit";
+  const usernameField = document.querySelector("#cart-auth-username");
+  const passwordField = document.querySelector("#cart-auth-password");
+  const errorHelp = document.querySelector("#cart-auth-error-help");
+  const isSignup = authMode === "signup";
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!checkDemoCredentials(usernameField.value, passwordField.value)) {
+      errorHelp.hidden = false;
+      passwordField.focus();
+      return;
+    }
+    errorHelp.hidden = true;
+    submitButton.disabled = true;
+    submitButton.textContent = isSignup ? "Creating account\u2026" : "Signing in\u2026";
+
+    window.setTimeout(() => {
+      setSignedIn(true);
+      authMode = "cart";
+      renderDrawer();
+    }, 700);
+  });
 }
 
 function bindDrawerEvents() {
@@ -93,21 +203,51 @@ function bindDrawerEvents() {
   if (closeBtn) closeBtn.addEventListener("click", closeCartDrawer);
 
   const searchBtn = panel.querySelector(".cart-drawer__empty .button--primary");
-  if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "/search"; });
+  if (searchBtn) searchBtn.addEventListener("click", () => { window.location.href = "search.html"; });
+
+  panel.querySelectorAll("[data-toggle-domain]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const domain = row.dataset.toggleDomain;
+      expandedDomain = expandedDomain === domain ? null : domain;
+      renderDrawer();
+    });
+  });
 
   panel.querySelectorAll("[data-remove-domain]").forEach((btn) => {
     btn.addEventListener("click", () => {
       removeFromCart(btn.dataset.removeDomain);
+      if (expandedDomain === btn.dataset.removeDomain) expandedDomain = null;
       renderDrawer();
       updateCartBadges();
     });
   });
 
+  panel.querySelectorAll("[data-bundle-domain]").forEach((radio) => {
+    radio.addEventListener("change", () => {
+      setCartItemBundle(radio.dataset.bundleDomain, radio.value);
+      expandedDomain = null;
+      renderDrawer();
+    });
+  });
+
   const checkoutBtn = panel.querySelector(".cart-drawer__actions .button--primary");
-  if (checkoutBtn) checkoutBtn.addEventListener("click", () => { window.location.href = "/checkout"; });
+  if (checkoutBtn && isSignedIn()) {
+    checkoutBtn.addEventListener("click", () => { window.location.href = "checkout.html"; });
+  } else if (checkoutBtn) {
+    checkoutBtn.addEventListener("click", () => { authMode = "signup"; renderDrawer(); });
+  }
+  const signinBtn = panel.querySelector(".cart-drawer__actions .button--secondary");
+  if (signinBtn) signinBtn.addEventListener("click", () => { authMode = "signin"; renderDrawer(); });
+
+  const signOutBtn = document.querySelector("#cart-drawer-signout");
+  if (signOutBtn) signOutBtn.addEventListener("click", () => {
+    setSignedIn(false);
+    renderDrawer();
+  });
 }
 
 export function openCartDrawer() {
+  authMode = "cart";
   renderDrawer();
   document.querySelector("#cart-drawer-overlay").hidden = false;
   document.querySelector("#cart-drawer").classList.add("is-open");
@@ -124,6 +264,7 @@ export function closeCartDrawer() {
 
 export function initCartDrawer() {
   updateCartBadges();
+  updateAuthNav();
   if (injected) return;
   injected = true;
 
@@ -139,6 +280,14 @@ export function initCartDrawer() {
     if (icon) {
       event.preventDefault();
       openCartDrawer();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const signOutBtn = event.target.closest("[data-sign-out]");
+    if (signOutBtn) {
+      setSignedIn(false);
+      updateAuthNav();
     }
   });
 

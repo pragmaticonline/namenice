@@ -1,14 +1,17 @@
+import { DEMO_USERNAME } from "./state.js";
+
 let injected = false;
 
 function menuMarkup() {
   return `
     <div class="account-menu" id="account-menu" role="menu" aria-label="Account menu" hidden>
-      <a href="/domains" role="menuitem">My Domains</a>
-      <a href="/orders" role="menuitem">Orders</a>
-      <a href="/transfer" role="menuitem">Transfer a domain</a>
-      <a href="/account" role="menuitem">Account settings</a>
+      <p class="account-menu__email">${DEMO_USERNAME}</p>
+      <a href="domains.html" role="menuitem">My Domains</a>
+      <a href="orders.html" role="menuitem">Orders</a>
+      <a href="transfer.html" role="menuitem">Transfer a domain</a>
+      <a href="account.html" role="menuitem">Account settings</a>
       <div class="account-menu__divider"></div>
-      <a href="/signout" role="menuitem">Sign out</a>
+      <button type="button" data-sign-out role="menuitem">Sign out</button>
     </div>
   `;
 }

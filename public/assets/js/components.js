@@ -17,15 +17,23 @@ export function wordmark() {
   return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
 }
 
-export function authNavLinks(signedIn) {
+function initials(name) {
+  return name.slice(0, 2).toUpperCase();
+}
+
+export function authNavLinks(signedIn, username) {
   if (signedIn) {
-    return `<button type="button" class="site-nav__account-trigger" data-account-trigger aria-haspopup="true" aria-expanded="false">Account <span aria-hidden="true">\u2304</span></button>`;
+    return `<button type="button" class="site-nav__avatar-trigger" data-account-trigger aria-haspopup="true" aria-expanded="false">
+      <span class="site-nav__avatar">${initials(username)}</span>
+      <span class="site-nav__avatar-name">${username}</span>
+      <span aria-hidden="true">\u2304</span>
+    </button>`;
   }
-  return `<a href="/signin">Sign in</a><a href="/signup">Create account</a>`;
+  return `<a href="signin.html">Sign in</a><a href="signup.html">Create account</a>`;
 }
 
 export function cartIcon({ count = 0 } = {}) {
-  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">
+  return `<a href="cart.html" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
       <circle cx="7.5" cy="17.5" r="1" fill="currentColor"/>
@@ -51,18 +59,24 @@ export function favoriteHeartIcon(favorited) {
 export function domainResultRow(result, { selected = false, action = "Add", favorited = null } = {}) {
   const price = result.price ?? "—";
   const heartMarkup = favorited === null ? "" : `<button type="button" class="compare-table__favorite" data-favorite-domain="${result.domain}" aria-pressed="${favorited}" aria-label="${favorited ? "Remove" : "Add"} ${result.domain} from favorites">${favoriteHeartIcon(favorited)}</button>`;
+  const isAddToCart = action === "Add";
+  const actionMarkup = isAddToCart
+    ? `<button class="button button--secondary domain-result__action" type="button" data-domain="${result.domain}" data-action="${action}">Add to cart</button>`
+    : `<button class="text-action domain-result__action" type="button" data-domain="${result.domain}" data-action="${action}">${action}</button>`;
   return `<article class="domain-result${selected ? " domain-result--selected" : ""}${favorited !== null ? " domain-result--with-favorite" : ""}">
     <div>
       <h3 class="domain-result__name">${selected ? '<span class="domain-result__selected-marker" aria-hidden="true">&check;</span>' : ""}${result.domain}</h3>
       <div class="domain-result__status">${statusBadge(result.status)}</div>
     </div>
-    <div class="domain-result__price"><strong>${price}</strong><span>${result.cadence}</span></div>
-    ${heartMarkup}
-    <button class="text-action" type="button" data-domain="${result.domain}" data-action="${action}">${action}</button>
+    <div class="domain-result__price"><strong>${price}</strong><span>${result.cadence ?? ""}</span></div>
+    <div class="domain-result__actions">
+      ${heartMarkup}
+      ${actionMarkup}
+    </div>
   </article>`;
 }
 
-export function domainSearch({ query, state = "initial", result, suggestions = [] }) {
+export function domainSearch({ query, state = "initial", result, suggestions = [], tld = ".net" }) {
   const safeQuery = escapeHtml(query.trim() || "Search your domain name");
   const isSearching = state === "searching";
   const isResult = ["available", "unavailable", "premium", "selected"].includes(state);
@@ -80,7 +94,7 @@ export function domainSearch({ query, state = "initial", result, suggestions = [
       <label class="sr-only" for="domain-search-input">Search for a domain</label>
       <span class="signature-search__icon" aria-hidden="true">⌕</span>
       <input id="domain-search-input" class="signature-search__input" value="${safeQuery}" aria-describedby="search-helper" />
-      <span class="signature-search__tld">.net</span>
+      <button type="button" class="signature-search__tld" data-tld-trigger aria-haspopup="true" aria-expanded="false">${tld} <span aria-hidden="true">⌄</span></button>
       <button class="signature-search__submit" type="button" ${isSearching ? "disabled" : ""}>${buttonLabel}</button>
     </div>
     <p id="search-helper" class="signature-search__helper">Search is free. Create an account when you're ready.</p>
