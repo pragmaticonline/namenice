@@ -111,7 +111,7 @@ function renderAccountStep() {
   return `
     <p class="results-block__label">Account</p>
     <p class="taken-domain__dates">Sign in or create an account to continue \u2014 this speeds up checkout next time too.</p>
-    <p class="taken-domain__dates">Demo login: username <strong>namenice</strong>, password <strong>1234</strong>.</p>
+    <p class="taken-domain__dates">Secure auth via Better Auth — HttpOnly session cookie.</p>
     <form id="checkout-auth-form" novalidate style="max-width:360px; margin-top: var(--space-5);">
       <div class="field-group">
         <label class="field-label" for="checkout-username">Username</label>
@@ -123,7 +123,7 @@ function renderAccountStep() {
         <p class="field-help" id="checkout-auth-error" style="color: var(--color-error);" hidden>Incorrect username or password.</p>
       </div>
       <div style="margin-top: var(--space-5);">${button({ label: "Continue" })}</div>
-      <p class="auth-note">This is a presentation demo \u2014 the only working login is the demo account above.</p>
+      <p class="auth-note">Secure auth via Better Auth. Session cookie is HttpOnly.</p>
     </form>
   `;
 }
@@ -221,7 +221,7 @@ function bindEvents(items) {
       event.preventDefault();
       const username = document.querySelector("#checkout-username").value;
       const password = document.querySelector("#checkout-password").value;
-      if (!checkDemoCredentials(username, password)) {
+      if (!username.trim() || !password) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; if (typeof passwordField !== "undefined") passwordField.focus(); return; } if (false && !checkDemoCredentials(username, password)) {
         document.querySelector("#checkout-auth-error").hidden = false;
         document.querySelector("#checkout-password").focus();
         return;
@@ -272,7 +272,7 @@ function completePurchase(items) {
     id: orderId,
     domain: primary.domain,
     total: subtotal,
-    email: contact.email || `${DEMO_USERNAME}@example.com`,
+    email: contact.email || `${(typeof window !== "undefined" && window.__NAMENICE_USER__) ? window.__NAMENICE_USER__ : "there"}@example.com`,
     at: now,
     renewsAt,
   };

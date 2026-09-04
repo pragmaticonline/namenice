@@ -1,7 +1,7 @@
 import { authNavLinks, button } from "./components.js";
 import {
   getCart, removeFromCart, setCartItemBundle, getCartCount,
-  isSignedIn, setSignedIn, checkDemoCredentials, DEMO_USERNAME,
+  isSignedIn, DEMO_USERNAME,
 } from "./state.js";
 import { bundleOptions, getBundleOption } from "./mocks/bundle-options.js";
 
@@ -137,11 +137,11 @@ function renderInlineAuth() {
     <div class="cart-drawer__auth">
       <h2 class="cart-drawer__auth-heading">${isSignup ? "Create your account" : "Sign in to namenice"}</h2>
       <p class="cart-drawer__auth-lede">${isSignup ? "Just enough to save your cart and check out." : "Welcome back."}</p>
-      <p class="cart-drawer__auth-lede">Demo login: username <strong>namenice</strong>, password <strong>1234</strong>.</p>
+      <p class="cart-drawer__auth-lede" style="color: var(--color-text-secondary); font-size: 13px;">Secure auth via Better Auth — HttpOnly session cookie.</p>
       <form id="cart-auth-form" novalidate>
         <div class="field-group">
-          <label class="field-label" for="cart-auth-username">Username</label>
-          <input class="field" type="text" id="cart-auth-username" placeholder="Enter your username" autocomplete="username" required />
+          <label class="field-label" for="cart-auth-username">Email address</label>
+          <input class="field" type="email" id="cart-auth-username" placeholder="you@example.com" autocomplete="email" required />
         </div>
         <div class="field-group">
           <label class="field-label" for="cart-auth-password">Password</label>
@@ -154,7 +154,7 @@ function renderInlineAuth() {
         ${isSignup ? "Already have an account?" : "New to namenice?"}
         <a href="#" id="cart-auth-switch">${isSignup ? "Sign in" : "Create an account"}</a>
       </p>
-      <p class="auth-note">This is a presentation demo \u2014 the only working login is the demo account above.</p>
+      <p class="auth-note">Secure auth via Better Auth. Session cookie is HttpOnly.</p>
     </div>
   `;
 }
@@ -177,24 +177,31 @@ function bindAuthEvents() {
   const usernameField = document.querySelector("#cart-auth-username");
   const passwordField = document.querySelector("#cart-auth-password");
   const errorHelp = document.querySelector("#cart-auth-error-help");
+  const status = document.querySelector("#cart-auth-status") || document.querySelector(".auth-note");
   const isSignup = authMode === "signup";
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!checkDemoCredentials(usernameField.value, passwordField.value)) {
-      errorHelp.hidden = false;
-      passwordField.focus();
-      return;
-    }
+    if (!usernameField.value.trim() || !passwordField.value) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; return; }
     errorHelp.hidden = true;
     submitButton.disabled = true;
     submitButton.textContent = isSignup ? "Creating account\u2026" : "Signing in\u2026";
 
-    window.setTimeout(() => {
-      setSignedIn(true);
+        status.textContent = "";
+    try {
+      const url = isSignup ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email";
+      const email = usernameField.value.trim();
+      const password = passwordField.value;
+      const body = isSignup ? { email, password, name: email.split("@")[0] } : { email, password };
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { errorHelp.textContent = j.message || j.error || "Failed: " + r.status; errorHelp.hidden = false; submitButton.disabled = false; return; }
+      status.textContent = "Success \u2014 redirecting\u2026";
       authMode = "cart";
       renderDrawer();
-    }, 700);
+      updateAuthNav();
+      updateCartBadges();
+    } catch (e) { errorHelp.textContent = String(e.message || e); errorHelp.hidden = false; submitButton.disabled = false; }
   });
 }
 

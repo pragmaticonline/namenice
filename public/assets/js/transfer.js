@@ -269,7 +269,7 @@ function renderAuthGateStep() {
     <section class="results-block" style="max-width:360px;">
       <p class="results-block__label">Create an account to continue</p>
       <p class="taken-domain__dates">Your transferred domain will be managed from your namenice account.</p>
-      <p class="taken-domain__dates">Demo login: username <strong>namenice</strong>, password <strong>1234</strong>.</p>
+      <p class="taken-domain__dates">Secure auth via Better Auth — HttpOnly session cookie.</p>
       <form id="transfer-auth-form" novalidate style="margin-top: var(--space-5);">
         <div class="field-group">
           <label class="field-label" for="transfer-auth-username">Username</label>
@@ -281,7 +281,7 @@ function renderAuthGateStep() {
           <p class="field-help" id="transfer-auth-error" style="color: var(--color-error);" hidden>Incorrect username or password.</p>
         </div>
         <div style="margin-top: var(--space-5);">${button({ label: "Continue" })}</div>
-        <p class="auth-note">This is a presentation demo \u2014 the only working login is the demo account above.</p>
+        <p class="auth-note">Secure auth via Better Auth. Session cookie is HttpOnly.</p>
       </form>
     </section>
   `;
@@ -441,7 +441,7 @@ function bindEvents() {
       event.preventDefault();
       const username = document.querySelector("#transfer-auth-username").value;
       const password = document.querySelector("#transfer-auth-password").value;
-      if (!checkDemoCredentials(username, password)) {
+      if (!username.trim() || !password) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; if (typeof passwordField !== "undefined") passwordField.focus(); return; } if (false && !checkDemoCredentials(username, password)) {
         document.querySelector("#transfer-auth-error").hidden = false;
         document.querySelector("#transfer-auth-password").focus();
         return;

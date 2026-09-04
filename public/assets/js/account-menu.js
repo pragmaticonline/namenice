@@ -5,7 +5,7 @@ let injected = false;
 function menuMarkup() {
   return `
     <div class="account-menu" id="account-menu" role="menu" aria-label="Account menu" hidden>
-      <p class="account-menu__email">${DEMO_USERNAME}</p>
+      <p class="account-menu__email">${(typeof window !== "undefined" && window.__NAMENICE_USER__) ? window.__NAMENICE_USER__ : "there"}</p>
       <a href="domains.html" role="menuitem">My Domains</a>
       <a href="orders.html" role="menuitem">Orders</a>
       <a href="transfer.html" role="menuitem">Transfer a domain</a>

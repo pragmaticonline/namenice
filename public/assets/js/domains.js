@@ -69,7 +69,7 @@ function renderList(domains, transfers) {
   return `
     <div class="dash-layout">
       <section>
-        <h1 class="search-toolbar__heading" style="margin-top: var(--space-8);">${hasAny ? "Welcome back" : "Welcome"}, ${DEMO_USERNAME}.</h1>
+        <h1 class="search-toolbar__heading" style="margin-top: var(--space-8);">${hasAny ? "Welcome back" : "Welcome"}, ${(typeof window !== "undefined" && window.__NAMENICE_USER__) ? window.__NAMENICE_USER__ : "there"}.</h1>
         <p class="taken-domain__dates">Manage your domains, renewals, and settings all in one place.</p>
 
         <div class="dash-search">

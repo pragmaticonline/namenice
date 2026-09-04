@@ -108,7 +108,7 @@ function renderSettings() {
         title: "Account",
         action: `<a href="#" class="text-action account-row__action" data-goto="edit-account">Edit account \u2192</a>`,
         body: `<div class="account-row__fields">
-          <div><p class="account-row__label">Username</p><p>${DEMO_USERNAME}</p></div>
+          <div><p class="account-row__label">Username</p><p>${(typeof window !== "undefined" && window.__NAMENICE_USER__) ? window.__NAMENICE_USER__ : "there"}</p></div>
           <div><p class="account-row__label">Email</p><p>${profile.email || "\u2014"}</p></div>
         </div>`,
       })}
@@ -154,7 +154,7 @@ function renderEditAccount() {
           <div class="account-form-grid">
             <div class="field-group">
               <label class="field-label" for="edit-username">Username</label>
-              <input class="field" type="text" id="edit-username" value="${DEMO_USERNAME}" disabled />
+              <input class="field" type="text" id="edit-username" value="${(typeof window !== "undefined" && window.__NAMENICE_USER__) ? window.__NAMENICE_USER__ : "there"}" disabled />
             </div>
             <div class="field-group">
               <label class="field-label" for="edit-fullname">Full name</label>
