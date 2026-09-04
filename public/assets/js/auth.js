@@ -24,7 +24,7 @@ function render() {
           ? "Search stays free forever. An account is only needed for buying, DNS, and billing."
           : "Welcome back \u2014 sign in to manage your domains."
       }</p>
-      <p class="auth-panel__lede" style="margin-top:-8px;">Demo login: username <strong>namenice</strong>, password <strong>1234</strong>.</p>
+      <p class="auth-panel__lede" style="margin-top:-8px; color: var(--color-text-secondary); font-size: 13px;">Secure auth via Better Auth — HttpOnly session cookie.</p>
 
       <form class="auth-form" id="auth-form" novalidate>
         <div class="field-group">
@@ -50,7 +50,7 @@ function render() {
         <a href="${isSignup ? "signin.html" : "signup.html"}">${isSignup ? "Sign in" : "Create an account"}</a>
       </p>
 
-      <p class="auth-note" id="auth-status">This is a presentation demo \u2014 the only working login is the demo account above.</p>
+      <p class="auth-note" id="auth-status">Secure auth via Better Auth. Session cookie is HttpOnly.</p>
     </section>
   `;
   bindEvents();
