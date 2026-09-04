@@ -145,3 +145,42 @@ test("cart copy does not promise a fixed price before server revalidation", asyn
   assert.doesNotMatch(html, /registrations are \$14\.99 each/i);
   assert.match(html, /price.*rechecked/i);
 });
+
+test("SPA bundles and SSR HTML never ship demo login copy", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const assets = join(new URL("../public/assets/js", import.meta.url).pathname);
+  const files = readdirSync(assets).filter(f => f.endsWith(".js"));
+  for (const file of files) {
+    const content = readFileSync(join(assets, file), "utf8");
+    assert.doesNotMatch(content, /Demo login/i, `${file} must not contain Demo login`);
+    assert.doesNotMatch(content, /presentation demo/i, `${file} must not contain presentation demo`);
+    // DEMO credentials may remain in state.js as constants but must not be user-visible copy
+    if (file !== "state.js") {
+      assert.doesNotMatch(content, /username.*namenice.*1234/i, `${file} must not leak demo credentials`);
+    }
+  }
+  // SSR HTML also must not leak demo
+  for (const path of ["/signup", "/signin"]) {
+    const res = await worker.fetch(new Request(`http://localhost${path}`), {});
+    const html = await res.text();
+    assert.doesNotMatch(html, /Demo login/i, `${path} HTML must not contain Demo login`);
+    assert.doesNotMatch(html, /1234/, `${path} HTML must not contain 1234`);
+    assert.match(html, /Secure auth via Better Auth/, `${path} should show real auth copy`);
+  }
+  // Cart drawer inline auth (the page-by-page miss) — check the JS that renders it
+  const cartDrawer = readFileSync(join(assets, "cart-drawer.js"), "utf8");
+  assert.doesNotMatch(cartDrawer, /Demo login/, "cart-drawer inline auth must not show Demo login");
+  assert.match(cartDrawer, /Secure auth via Better Auth/, "cart drawer should show Secure auth");
+  assert.match(cartDrawer, /\/api\/auth\/sign-in\/email/, "cart drawer should call real Better Auth");
+  assert.match(cartDrawer, /Email address/, "cart drawer should use Email field");
+});
+
+test("cart drawer shows real user when server session present", async () => {
+  const res = await worker.fetch(new Request("http://localhost/"), {});
+  const html = await res.text();
+  assert.match(html, /window\.__NAMENICE_SIGNED_IN__/);
+  assert.match(html, /window\.__NAMENICE_USER__/);
+  const cartDrawer = readFileSync(new URL("../public/assets/js/cart-drawer.js", import.meta.url), "utf8");
+  assert.match(cartDrawer, /__NAMENICE_USER__/);
+});
