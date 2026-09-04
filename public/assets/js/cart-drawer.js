@@ -28,7 +28,8 @@ export function updateCartBadges() {
 export function updateAuthNav() {
   const signedIn = isSignedIn();
   document.querySelectorAll("[data-auth-slot]").forEach((slot) => {
-    slot.innerHTML = authNavLinks(signedIn, DEMO_USERNAME);
+    const displayName = (typeof window !== "undefined" && window.__NAMENICE_USER__) ? window.__NAMENICE_USER__ : DEMO_USERNAME;
+    slot.innerHTML = authNavLinks(signedIn, displayName);
   });
 }
 

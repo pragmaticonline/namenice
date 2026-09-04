@@ -1,5 +1,4 @@
 import { button, wordmark } from "./components.js";
-import { checkDemoCredentials, setSignedIn } from "./state.js";
 
 const app = document.querySelector("#app");
 const mode = app.dataset.mode === "signup" ? "signup" : "signin";
@@ -28,13 +27,13 @@ function render() {
 
       <form class="auth-form" id="auth-form" novalidate>
         <div class="field-group">
-          <label class="field-label" for="auth-username">Username</label>
-          <input class="field" type="text" id="auth-username" placeholder="Enter your username" autocomplete="username" required />
+          <label class="field-label" for="auth-username">Email address</label>
+          <input class="field" type="email" id="auth-username" placeholder="you@example.com" autocomplete="email" required />
         </div>
         <div class="field-group">
           <label class="field-label" for="auth-password">Password</label>
           <input class="field" type="password" id="auth-password" placeholder="Enter your password" autocomplete="${isSignup ? "new-password" : "current-password"}" required />
-          <p class="field-help" id="auth-error-help" style="color: var(--color-error);" hidden>Incorrect username or password.</p>
+          <p class="field-help" id="auth-error-help" style="color: var(--color-status-error);" hidden>Incorrect email or password.</p>
         </div>
         ${button({ label: isSignup ? "Create account" : "Sign in" })}
       </form>
@@ -65,24 +64,25 @@ function bindEvents() {
   const passwordField = document.querySelector("#auth-password");
   const errorHelp = document.querySelector("#auth-error-help");
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
-
-    if (!checkDemoCredentials(usernameField.value, passwordField.value)) {
-      errorHelp.hidden = false;
-      passwordField.focus();
-      return;
-    }
+    const email = usernameField.value.trim();
+    const password = passwordField.value;
+    if (!email || !password) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; return; }
     errorHelp.hidden = true;
-
     submitButton.disabled = true;
     submitButton.textContent = isSignup ? "Creating account\u2026" : "Signing in\u2026";
-    status.textContent = "Presentation demo \u2014 nothing was actually submitted.";
-
-    window.setTimeout(() => {
-      setSignedIn(true);
+    status.textContent = "";
+    try {
+      const url = isSignup ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email";
+      const body = isSignup ? { email, password, name: email.split("@")[0] } : { email, password };
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { errorHelp.textContent = j.message || j.error || "Failed: " + r.status; errorHelp.hidden = false; submitButton.disabled = false; submitButton.textContent = isSignup ? "Create account" : "Sign in"; return; }
+      status.textContent = "Success \u2014 redirecting\u2026";
+      status.style.color = "var(--color-status-success)";
       window.location.href = nextUrl;
-    }, 900);
+    } catch (e) { errorHelp.textContent = String(e.message || e); errorHelp.hidden = false; submitButton.disabled = false; }
   });
 }
 
