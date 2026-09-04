@@ -1,6 +1,6 @@
 import { button, cartIcon, wordmark } from "./components.js";
 import {
-  getCart, clearCart, isSignedIn, setSignedIn, checkDemoCredentials, DEMO_USERNAME,
+  getCart, clearCart, isSignedIn, setSignedIn, DEMO_USERNAME,
   addOrder, addOwnedDomain,
 } from "./state.js";
 import { getBundleOption } from "./mocks/bundle-options.js";
@@ -221,11 +221,7 @@ function bindEvents(items) {
       event.preventDefault();
       const username = document.querySelector("#checkout-username").value;
       const password = document.querySelector("#checkout-password").value;
-      if (!username.trim() || !password) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; if (typeof passwordField !== "undefined") passwordField.focus(); return; } if (false && !checkDemoCredentials(username, password)) {
-        document.querySelector("#checkout-auth-error").hidden = false;
-        document.querySelector("#checkout-password").focus();
-        return;
-      }
+      if (!username.trim() || !password) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; if (typeof passwordField !== "undefined") passwordField.focus(); return; }
       submitBtn.disabled = true;
       submitBtn.textContent = "Signing in\u2026";
       window.setTimeout(() => {

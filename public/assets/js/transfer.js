@@ -1,5 +1,5 @@
 import { button, cartIcon, wordmark } from "./components.js";
-import { isSignedIn, setSignedIn, checkDemoCredentials, addTransferRequest, formatDate } from "./state.js";
+import { isSignedIn, setSignedIn, addTransferRequest, formatDate } from "./state.js";
 import { transferScenarios, FAILING_AUTH_CODE } from "./mocks/transfer-mock.js";
 import { initCartDrawer, updateAuthNav, updateCartBadges } from "./cart-drawer.js";
 import { initAccountMenu } from "./account-menu.js";
@@ -441,7 +441,7 @@ function bindEvents() {
       event.preventDefault();
       const username = document.querySelector("#transfer-auth-username").value;
       const password = document.querySelector("#transfer-auth-password").value;
-      if (!username.trim() || !password) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; if (typeof passwordField !== "undefined") passwordField.focus(); return; } if (false && !checkDemoCredentials(username, password)) {
+      if (!username.trim() || !password) { errorHelp.hidden = false; errorHelp.textContent = "Email and password required"; if (typeof passwordField !== "undefined") passwordField.focus(); return; } if (false) {
         document.querySelector("#transfer-auth-error").hidden = false;
         document.querySelector("#transfer-auth-password").focus();
         return;
