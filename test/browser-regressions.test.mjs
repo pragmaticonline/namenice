@@ -92,9 +92,13 @@ test("unknown routes render a useful noindex page", async () => {
   assert.match(html, /Return home/);
 });
 
-test("signed-out visitors cannot see or open Domain transfer controls", async () => {
+test("signed-out visitors cannot open Domain transfer controls", async () => {
   const homepage = await worker.fetch(new Request("http://localhost/"), {});
-  assert.doesNotMatch(await homepage.text(), /href="\/transfer"/);
+  const html = await homepage.text();
+  // Redesign marketing nav intentionally links /transfer; the route itself stays auth-gated.
+  assert.match(html, /href="\/transfer"/);
+  assert.doesNotMatch(html, /action="\/domains\/transfer/);
+  assert.doesNotMatch(html, /Authorization code/);
 
   const transfer = await worker.fetch(new Request("http://localhost/transfer"), {});
   assert.equal(transfer.status, 302);
@@ -118,10 +122,12 @@ test("Dynadot textual no premium flag renders an available standard Domain", asy
     DYNADOT_API_SECRET:"prod_test_secret",
   });
   const html = await response.text();
-  assert.match(html, /status-badge--available/);
+  assert.match(html, /Available — exact match/);
+  assert.match(html, /pill--success/);
   assert.doesNotMatch(html, /Premium domain/);
-  assert.match(html, /getCart\(\)\.some/);
-  assert.match(html, /btn\.disabled=true/);
+  assert.match(html, /data-add-domain="boooffffffewfeffewfpop\.com"/);
+  assert.match(html, /Other extensions/);
+  assert.match(html, /removeFromCart\(/);
 });
 
 test("a registered RDAP Domain is never offered even when registrar flags it available", async (t) => {
@@ -134,7 +140,7 @@ test("a registered RDAP Domain is never offered even when registrar flags it ava
   t.after(() => { globalThis.fetch = originalFetch; });
   const response = await worker.fetch(new Request("http://localhost/search?q=github.com"), { DYNADOT_API_KEY:"prod_test_key", DYNADOT_API_SECRET:"prod_test_secret" });
   const html = await response.text();
-  assert.match(html, /Unavailable/);
+  assert.match(html, /Taken/);
   assert.doesNotMatch(html, /data-add-domain="github\.com"/);
   assert.doesNotMatch(html, /close options/);
 });

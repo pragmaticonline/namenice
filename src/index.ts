@@ -29,19 +29,59 @@ function isValidSearchDomain(domain:string):boolean {
   return /^[a-z]{2,63}$/.test(tld) && !["example", "invalid", "localhost", "test"].includes(tld);
 }
 
+/* Extensions checked together on /search. Keep small: every entry costs a
+   live registrar + RDAP lookup, all run in parallel per search. */
+const SEARCH_TLDS = ["net", "com", "co", "io", "app", "org", "dev"];
+
+/* Split a raw query into the exact domain to feature plus the bare stem used
+   for the other-extension rows and idea chips. Returns null when the query
+   cannot name a domain (no registrar lookup should happen then). */
+function parseSearchQuery(rawQuery: string): { exact: string; stem: string } | null {
+  const raw = rawQuery.toLowerCase().trim();
+  if (!raw) return null;
+  if (raw.includes(".")) {
+    if (!isValidSearchDomain(raw)) return null;
+    const labels = raw.split(".");
+    const stem = labels.length === 2 ? labels[0] : raw.replace(/\./g, "");
+    if (!stem) return null;
+    return { exact: raw, stem };
+  }
+  const stem = raw.replace(/[^a-z0-9-]/g, "");
+  if (!stem || !isValidSearchDomain(stem + ".net")) return null;
+  return { exact: stem + ".net", stem };
+}
+
+type QuoteSummary = { domain: string; available: boolean; premium: boolean; amountCents: number | null };
+
+async function quoteDomain(env: any, domain: string): Promise<QuoteSummary | null> {
+  try {
+    const result = await getDomainQuote(env, domain);
+    if (!result.ok) return null;
+    return { domain, available: result.quote.available, premium: result.quote.premium, amountCents: result.quote.amountCents };
+  } catch { return null; }
+}
+
+/* Quote several domains in parallel; failures resolve to null (row skipped),
+   never reject the whole search. */
+async function quoteMany(env: any, domains: string[]): Promise<Array<QuoteSummary | null>> {
+  return Promise.all(domains.map((domain) => quoteDomain(env, domain)));
+}
+
+function quoteStatus(quote: QuoteSummary): "available" | "unavailable" | "premium" {
+  if (!quote.available) return "unavailable";
+  return quote.premium ? "premium" : "available";
+}
+
+function centsToPrice(amountCents: number | null): string {
+  return amountCents == null ? "—" : "$" + (amountCents / 100).toFixed(2);
+}
+
 function wordmarkHtml(): string {
-  return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
+  return `<span class="wordmark">namenice<span class="wordmark__dot" aria-hidden="true">.</span></span>`;
 }
 
 function cartIconHtml(count = 0): string {
-  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="7.5" cy="17.5" r="1" fill="currentColor"/>
-      <circle cx="14" cy="17.5" r="1" fill="currentColor"/>
-    </svg>
-    ${count > 0 ? `<span class="cart-icon__count">${count}</span>` : ""}
-  </a>`;
+  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart${count > 0 ? `<span class="cart-icon__count">${count}</span>` : ""}</a>`;
 }
 
 function statusBadgeHtml(status: string): string {
@@ -49,30 +89,48 @@ function statusBadgeHtml(status: string): string {
   return `<span class="status-badge status-badge--${status}"><span aria-hidden="true">\u25CF</span> ${copy[status] || status}</span>`;
 }
 
-function shell(title: string, body: string, opts?: { user?: { email:string } | null; orgId?: number; activeTab?: string; headExtra?: string }): string {
+function shell(title: string, body: string, opts?: { user?: { email:string } | null; orgId?: number; activeTab?: string; headExtra?: string; searchNav?: string }): string {
   const user = opts?.user ?? null;
   const org = opts?.orgId ?? 1;
   const active = opts?.activeTab || "";
   const isActive = (t:string) => active === t ? " is-active" : "";
-  const navTabs = `<div class="site-nav__tabs">
-        <a href="/search" class="site-nav__tab${isActive("search")}">Search</a>
-        <a href="/history" class="site-nav__tab${isActive("history")}">History</a>
-        <a href="/favorites" class="site-nav__tab${isActive("favorites")}">Favorites</a>
-        ${user ? `<a href="/transfer" class="site-nav__tab site-nav__tab--secondary${isActive("transfer")}">Transfer a domain</a>` : ""}
-      </div>`;
-  const authSlot = user
-    ? `<button type="button" class="site-nav__account-trigger" data-account-trigger aria-haspopup="true" aria-expanded="false">Account <span aria-hidden="true">\u2304</span></button>`
-    : `<span data-auth-slot><a href="/signin">Sign in</a><a href="/signup">Create account</a></span>`;
-  const nav = `<nav class="site-nav site-nav--full">
-      <a href="/" class="wordmark">${wordmarkHtml()}</a>
-      ${navTabs}
-      <div class="site-nav__links">
-        ${authSlot}
+  const accountInitial = esc((user?.email || "n").trim().charAt(0).toUpperCase() || "N");
+  const navLinks = user
+    ? `<a href="/domains" class="topnav__link${isActive("domains")}">Domains</a>
+        <a href="/billing" class="topnav__link${isActive("billing")}">Billing</a>
+        <a href="/settings" class="topnav__link${isActive("team")}">Team</a>
+        <a href="/api/keys" class="topnav__link${isActive("developers")}">Developers</a>`
+    : `<span data-auth-slot class="topnav__slot"><a href="/#pricing" class="topnav__link">Pricing</a>
+        <a href="/transfer" class="topnav__link">Transfer</a>
+        <a href="/signin" class="topnav__link">Sign in</a>
+        <a href="/signup" class="topnav__cta">Get started</a></span>`;
+  const accountSlot = user
+    ? `<button type="button" class="topnav__avatar" data-account-trigger aria-haspopup="true" aria-expanded="false" aria-label="Account">${accountInitial}</button>`
+    : ``;
+  const nav = opts?.searchNav !== undefined
+    ? `<nav class="topnav topnav--search" aria-label="Primary">
+      <div class="topnav__inner">
+        <a href="/" class="topnav__wordmark" aria-label="namenice home">${wordmarkHtml()}</a>
+        <form method="get" action="/search" class="topnav__search" role="search">
+          <label class="sr-only" for="topnav-q">Search domains</label>
+          <input id="topnav-q" name="q" value="${esc(opts.searchNav)}" placeholder="Search domains" autocomplete="off" />
+          <button type="submit">Search</button>
+        </form>
         ${cartIconHtml()}
+      </div>
+    </nav>`
+    : `<nav class="topnav" aria-label="Primary">
+      <div class="topnav__inner">
+        <a href="/" class="topnav__wordmark" aria-label="namenice home">${wordmarkHtml()}</a>
+        <div class="topnav__links">
+          ${navLinks}
+          ${accountSlot}
+          ${cartIconHtml()}
+        </div>
       </div>
     </nav>`;
   const accountMenuUser = user ? esc(user.email) : "namenice";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><script>window.__NAMENICE_SIGNED_IN__=${user ? "true" : "false"};window.__NAMENICE_USER__=${JSON.stringify(user?.email||"")};</script><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice — find a name worth owning. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><script>window.__NAMENICE_SIGNED_IN__=${user ? "true" : "false"};window.__NAMENICE_USER__=${JSON.stringify(user?.email||"")};</script><div class="page-shell">${nav}<div class="page-body">${body}</div><footer class="site-footer"><p>\u00A9 ${new Date().getFullYear()} namenice · Find a name worth owning</p></footer></div><script type="module">
 import { initCartDrawer } from "/assets/js/cart-drawer.js";
 import { initAccountMenu } from "/assets/js/account-menu.js";
 try { initCartDrawer(); } catch(e) { console.warn(e); }
@@ -357,94 +415,44 @@ if (form) {
 
 app.get("/", async (c) => {
   const user = await getSessionUser(c);
-  const orgParam = c.req.query("org") ? `?org=${c.req.query("org")}` : "";
   const homepageBody = `
-    <header class="hero">
-      <div class="hero__diagonal" aria-hidden="true"></div>
-      <div class="hero__grid">
-        <div class="hero__copy">
-          <p class="hero__eyebrow">namenice \u00B7 domains</p>
-          <h1 class="hero__headline">Find a name<br />worth <mark class="hero__accent">owning</mark>.</h1>
-          <p class="hero__subhead">Search. Check. Register. Your next domain in minutes.</p>
-        </div>
-        <div class="hero__mark">
-        <div class="hero__extensions">
-          <p class="hero__extensions-label">Popular extensions</p>
-          <ul class="hero__extensions-list">
-            <li>.net</li>
-            <li>.com</li>
-            <li>.io</li>
-            <li>.co</li>
-            <li>.org</li>
-          </ul>
-        </div>
-      </div>
-      </div>
+    <header class="home-hero">
+      <p class="home-pill">.net · .com · .io · .co · .org and more</p>
+      <h1>Find a name<br />worth owning.</h1>
+      <p class="home-sub">Type an idea. We check popular extensions at once and show the real price — first year and renewal.</p>
+      <form method="get" action="/search" class="home-search" onsubmit="const v=this.querySelector('input[name=q]').value.trim(); if(!v){event.preventDefault(); this.querySelector('input[name=q]').focus(); return false;}">
+        <label class="sr-only" for="home-q">Domain or idea</label>
+        <input id="home-q" name="q" value="" placeholder="Try \u201Csunrise bakery\u201D or sunrise.com" autocomplete="off" />
+        <button type="submit">Search</button>
+      </form>
+      <div class="home-popular"><span>Popular:</span><a class="chip" href="/search?q=sunrise">sunrise</a><a class="chip" href="/search?q=studio">studio</a><a class="chip" href="/search?q=getfit">getfit</a></div>
+      <p class="home-trust">Free to search · No account needed · WHOIS privacy included</p>
     </header>
-    <div class="hero-search-overlap">
-      <section class="signature-search" data-search-state="initial">
-        <form method="get" action="/search" class="signature-search__frame" style="flex:1" onsubmit="const v=this.querySelector('input[name=q]').value.trim(); if(!v){event.preventDefault(); this.querySelector('input[name=q]').focus(); return false;}">
-          <label class="sr-only" for="domain-search-input">Search for a domain</label>
-          <span class="signature-search__icon" aria-hidden="true">\u2315</span>
-          <input id="domain-search-input" name="q" class="signature-search__input" placeholder="yourdomain.com" aria-describedby="search-helper" value="" />
-          
-          <button class="signature-search__submit" type="submit">Check availability</button>
-        </form>
-        <p id="search-helper" class="signature-search__helper">Search is free. Create an account when you\u2019re ready.</p>
-      </section>
-    </div>
-    ${user ? `<p class="taken-domain__dates" style="text-align:center; margin: var(--space-4) 0 0;">Already own a domain? <a class="text-action" href="/transfer">Transfer it to Namenice →</a></p>` : ""}
-    <section class="section section--after-hero">
-      <p class="section__eyebrow">Why namenice</p>
-      <h2 class="section__heading">A domain is a small commitment. It shouldn\u2019t feel like a big risk.</h2>
-      <div class="value-list">
-        <div class="value-row"><h3>Own it, plainly</h3><p>The domain is registered to you, in your account, with a straightforward path to move or transfer it whenever you need to.</p></div>
-        <div class="value-row"><h3>Pricing you can see</h3><p>The price you check is the price you pay. Renewal costs are shown up front, not buried until the year it renews.</p></div>
-        <div class="value-row"><h3>DNS that doesn\u2019t fight you</h3><p>Add a record, save it, done. No hunting through nested menus to point a domain at your site.</p></div>
-        <div class="value-row"><h3>Control over what matters</h3><p>Share access with a team without sharing the whole account — owner, admin, billing, and viewer each see only what they need.</p></div>
-        <div class="value-row"><h3>Renewal, handled simply</h3><p>Turn on auto-renew and stop thinking about it, or manage it manually if you\u2019d rather decide each year yourself.</p></div>
+    <section class="home-section">
+      <div class="home-steps">
+        <div class="card"><p class="home-steps__num">1</p><h3>Search</h3><p>One box. Popular extensions checked at once, with smart suggestions if your first pick is taken.</p></div>
+        <div class="card"><p class="home-steps__num">2</p><h3>Pick</h3><p>Tap to add. Renewal price sits right next to the first-year price — no surprises next year.</p></div>
+        <div class="card"><p class="home-steps__num">3</p><h3>Own it</h3><p>Pay with card or balance. Your domain is live in minutes, with DNS that\u2019s ready to point anywhere.</p></div>
       </div>
     </section>
-    <section class="section">
-      <p class="section__eyebrow">Pricing</p>
-      <h2 class="section__heading">Know what you\u2019ll pay.</h2>
-      <div class="price-decision">
-        <div class="price-decision__domain"><span class="domain-result__selected-marker" aria-hidden="true">✓</span><span class="price-decision__name">namenice.net</span> <span class="muted" style="font-size:12px; margin-left:8px;">— example</span></div>
-        <div class="price-decision__row"><div><p class="price-decision__label">Registration</p><p class="price-decision__amount">$14.99<span>/ first year</span></p></div><div><p class="price-decision__label">Renewal</p><p class="price-decision__amount price-decision__amount--muted">$14.99<span>/ year</span></p></div></div>
-        <p class="price-decision__terms">Registration and renewal are $14.99 per year.</p>
-        <div class="price-decision__actions"><a class="button button--primary" href="/search?q=namenice">Check namenice.net →</a><a class="text-action" href="/search">See more options</a></div>
-      </div>
-    </section>
-    <section class="section section--dark">
-      <p class="section__eyebrow">Capability</p>
-      <h2 class="section__heading">DNS that keeps up, without getting in the way.</h2>
-      <div class="tech-panel"><p class="tech-panel__lede">Every record type you\u2019d expect, plus tools for importing a zone, forwarding a URL, or locking a domain down when it matters.</p>
-        <div class="tech-grid">
-          <div class="tech-item"><h4>Every record type</h4><p>A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, ALIAS — with TTLs from 60 seconds to a full day.</p></div>
-          <div class="tech-item"><h4>Zone tools</h4><p>Import a BIND zone file, bulk-edit records, or set up URL forwarding with 301 or 302 redirects.</p></div>
-          <div class="tech-item"><h4>Domain security</h4><p>DNSSEC, vanity nameservers, WHOIS privacy by default, and lock or unlock a domain when it matters.</p></div>
-          <div class="tech-item"><h4>Team access</h4><p>Owner, admin, billing, and viewer roles, with 7-day invite links and a 90-day audit trail.</p></div>
-          <div class="tech-item"><h4>Developer access</h4><p>API keys, webhooks, and a balance ledger — Stripe is only the processor, not the source of truth.</p></div>
-          <div class="tech-item"><h4>Auto-renewal</h4><p>Renew straight from your balance so an important name never lapses by accident.</p></div>
+    <section class="home-section" id="pricing">
+      <div class="home-band">
+        <div class="home-band__copy"><h2>One honest price.</h2><p>.net registers and renews at the same price. No teaser rates, no hidden add-ons, privacy included.</p></div>
+        <div class="home-band__card"><p class="home-band__card-name">yourname.net</p>
+          <div class="home-band__prices"><div><p>First year</p><strong>$14.99</strong></div><div><p>Renews at</p><strong>$14.99</strong></div></div>
+          <a class="home-band__cta" href="/search">Check your name →</a>
         </div>
       </div>
     </section>
-    <section class="section">
-      <p class="section__eyebrow">Management</p>
-      <h2 class="section__heading">Keep your domains where you can see them.</h2>
-      <div class="management-preview"><p class="management-preview__lede">All your domains in one list, each with its own overview, DNS, renewal, and transfer controls.</p>
-        <div class="management-panel"><div class="management-panel__header"><h3>My Domains</h3><span class="status-badge status-badge--available">\u25CF Active</span></div>
-          <div class="row-group" style="padding: var(--space-5);">
-            <div class="cart-page-item" style="padding: var(--space-3) 0;">
-              <div class="cart-page-item__head"><strong>namenice.net</strong><span class="status-badge status-badge--available">\u25CF Active</span></div>
-              <p class="taken-domain__dates">Domain only \u00B7 Expires ${new Date(Date.now()+365*86400000).toLocaleDateString()} \u00B7 Auto-renew On</p>
-            </div>
-          </div>
-          <div class="management-actions"><a class="button button--primary" href="${user ? "/domains" + orgParam : "/signin"}">${user ? "Manage domains →" : "Create account to manage →"}</a><a class="text-action" href="/domains">View all</a></div>
-        </div>
+    <section class="home-section">
+      <h2>Everything after checkout, simple too.</h2>
+      <div class="home-benefits">
+        <div class="card"><h3>Private by default</h3><p>WHOIS privacy is included on every domain — your personal details stay out of the public record.</p></div>
+        <div class="card"><h3>Never lose a name</h3><p>Auto-renew from your balance, with reminders before it renews.</p></div>
+        <div class="card"><h3>Share with your team</h3><p>Invite people as admin, billing or viewer — they see only what they need.</p></div>
+        <div class="card"><h3>Built for developers</h3><p>API keys, webhooks, CLI and a Terraform provider when you need them.</p></div>
       </div>
     </section>
-    <section class="section final-cta"><h2 class="final-cta__headline">A good name shouldn\u2019t be hard to own.</h2><a class="button button--primary" href="/search">Search your domain →</a></section>
   `;
   c.header("Cache-Control", "no-store, no-cache, must-revalidate");
   c.header("CDN-Cache-Control", "no-store");
@@ -460,97 +468,152 @@ app.get("/login", (c) => c.redirect("/signin", 302));
 app.get("/search", async (c) => {
   const user = await getSessionUser(c);
   const q = (c.req.query("q") || c.req.query("query") || c.req.query("domain") || "").trim();
-  const orgId = Number(c.req.query("org") || 1);
-  let resultHtml = "";
-  let suggestionsHtml = "";
-  let validSearch = false;
-  if (q) {
-    const registrarReady = dynadotConfigured(c.env as any);
-    let domain = q.toLowerCase().trim();
-    // Allow any TLD — if no dot, default to .net for convenience
-    if (!domain.includes(".")) domain = domain.replace(/[^a-z0-9-]/g,"") + ".net";
-    const invalidDomain = !isValidSearchDomain(domain);
-    validSearch = !invalidDomain;
-    // Keep user-typed TLD as-is (supports .com, .io, .co, .org, etc.)
-    let available = false; let price: string | null = null; let raw: any = null;
-    let status: "available"|"unavailable"|"premium" = "unavailable";
-    if (registrarReady && !invalidDomain) {
-      try {
-        const result = await getDomainQuote(c.env as any, domain);
-        if (result.ok) {
-          available = result.quote.available;
-          price = result.quote.amountCents == null ? null : (result.quote.amountCents / 100).toFixed(2);
-          status = result.quote.premium ? "premium" : available ? "available" : "unavailable";
-        }
-      } catch {}
-    } else {
-      available = false;
-      price = null;
-      status = "unavailable";
-    }
-    const priceStr = price ? `$${price}` : "—";
-    const badge = invalidDomain ? `<span class="status-badge status-badge--unavailable"><span aria-hidden="true">●</span> Invalid domain</span>` : statusBadgeHtml(status);
-    const msg = invalidDomain ? "Enter a valid domain name, such as example.com."
-      : !registrarReady ? "Domain search is temporarily unavailable. Please try again later."
-      : status === "available" ? "Ready when you are. Review the price before you continue."
-      : status === "premium" ? "Premium domains have a separate purchase price. Renewal details come next."
-      : "This name is already registered.";
-    resultHtml = `<div class="results-hero your-search-panel">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);flex-wrap:wrap;">
-        <div>
-          <h2 style="margin:0;font-size:20px;letter-spacing:-.02em;">${esc(domain)}</h2>
-          <div style="margin-top:var(--space-2);">${badge}</div>
-        </div>
-        <div style="text-align:right;"><strong style="font-size:20px;">${priceStr}</strong><span style="color:var(--color-text-secondary);font-size:12px;display:block;">${invalidDomain?"Check spelling":status==="available"?" / first year": status==="premium"?"Premium purchase price":"Not for sale"}</span></div>
-        ${registrarReady && available ? `<button class="button button--primary" type="button" data-add-domain="${esc(domain)}" data-price="${price||""}">Add to cart</button>` : ""}
-        ${invalidDomain ? "" : `<button class="compare-table__favorite" type="button" data-favorite-domain="${esc(domain)}" aria-label="Favorite ${esc(domain)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button>`}
-      </div>
-      <p class="search-result__message" style="margin-top:var(--space-4);">${esc(msg)}</p>
-    </div>`;
+  const parsed = q ? parseSearchQuery(q) : null;
+  const validSearch = parsed !== null;
+  const registrarReady = dynadotConfigured(c.env as any);
+  let mainColumn = "";
+  if (!parsed) {
+    const msg = q ? "Enter a valid domain name, such as example.com."
+      : "Enter a name above to check availability — any TLD.";
+    mainColumn = `<section class="card srch-prompt"><p>${esc(msg)}</p></section>`;
+  } else if (!registrarReady) {
+    mainColumn = `<section class="card srch-prompt"><p>Domain search is temporarily unavailable. Please try again later.</p></section>`;
   } else {
-    resultHtml = `<div class="results-block"><p class="taken-domain__dates">Enter a name above to check availability — any TLD.</p></div>`;
-  }
-  const historyEntries = `<div class="recent-searches"><p class="recent-searches__label">Recent searches</p><ul id="recent-searches-list"></ul><a class="text-action" href="/history">View all history →</a></div>`;
-  const searchBody = `
-    <section class="search-toolbar">
-      <div class="search-toolbar__layout">
-        <div>
-          <h1 class="search-toolbar__heading">Search domains</h1>
-          <form method="get" action="/search" class="search-toolbar__bar">
-            <div class="signature-search__frame" style="max-width:520px;">
-              <span class="signature-search__icon" aria-hidden="true">\u2315</span>
-              <input id="search-input" name="q" class="signature-search__input" value="${esc(q)}" placeholder="yourdomain.com" aria-label="Search your domain name" />
-              
-              <button class="signature-search__submit" type="submit">Search</button>
-            </div>
-          </form>
+    const { exact, stem } = parsed;
+    const rowDomains = SEARCH_TLDS
+      .map((tld) => `${stem}.${tld}`)
+      .filter((domain) => domain !== exact && isValidSearchDomain(domain));
+    const ideaDomains = [...new Set([`get${stem}.com`, `${stem}hq.com`, `try${stem}.com`, `${stem}app.com`])]
+      .filter((domain) => domain !== exact && !rowDomains.includes(domain) && isValidSearchDomain(domain));
+    const [exactQuote, ...rest] = await quoteMany(c.env as any, [exact, ...rowDomains, ...ideaDomains]);
+    const rowQuotes = rest.slice(0, rowDomains.length);
+    const ideaQuotes = rest.slice(rowDomains.length);
+    const exactStatus = exactQuote ? quoteStatus(exactQuote) : "unavailable";
+    const exactPrice = exactQuote ? centsToPrice(exactQuote.amountCents) : "—";
+    const exactPill = exactStatus === "available"
+      ? `<p class="pill pill--success"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10l4 4 8-8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>Available — exact match</p>`
+      : exactStatus === "premium"
+      ? `<p class="pill pill--warning">Premium domain</p>`
+      : `<p class="pill pill--muted">Taken</p>`;
+    const exactRenew = exactStatus === "available"
+      ? `Renews at ${exactPrice}/yr · WHOIS privacy included`
+      : exactStatus === "premium"
+      ? `Premium purchase price · Renewal details at checkout`
+      : `This name is already registered.`;
+    const exactCta = exactStatus === "unavailable" ? "" : `<button type="button" class="button button--primary button--lg srch-exact__cta" data-add-domain="${esc(exact)}" data-price="${exactPrice}" data-label-add="Add to cart"><span data-add-label>Add to cart</span></button>`;
+    const exactFav = `<button class="compare-table__favorite srch-exact__fav" type="button" data-favorite-domain="${esc(exact)}" aria-label="Favorite ${esc(exact)}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 17.2s-6.8-4.1-6.8-9.1a3.9 3.9 0 0 1 6.8-2.6 3.9 3.9 0 0 1 6.8 2.6c0 5-6.8 9.1-6.8 9.1Z" stroke="currentColor" stroke-width="1.4"/></svg></button>`;
+    const exactCard = `<section class="srch-exact" data-exact-card data-domain="${esc(exact)}" data-status="${exactStatus}" data-price="${exactPrice}">
+      <div class="srch-exact__info">${exactPill}<h1 class="srch-exact__domain">${esc(exact)}</h1><p class="srch-exact__renew">${exactRenew}</p></div>
+      <div class="srch-exact__buy"><p class="srch-exact__price">${exactPrice}</p><p class="srch-exact__per">${exactStatus === "unavailable" ? "Not for sale" : "first year"}</p></div>
+      <div class="srch-exact__actions">${exactCta}${exactFav}</div>
+    </section>`;
+    const rowsHtml = rowQuotes.map((quote, i) => {
+      if (!quote) return "";
+      const domain = rowDomains[i];
+      const status = quoteStatus(quote);
+      const buyable = status !== "unavailable";
+      const price = centsToPrice(quote.amountCents);
+      const renew = !buyable ? "" : status === "premium" ? "renewal at checkout" : "renews same";
+      return `<div class="srch-row${buyable ? "" : " is-taken"}" data-tld-row data-available="${buyable ? "1" : "0"}" data-cents="${quote.amountCents ?? ""}">
+        <div class="srch-row__name">${esc(domain)}</div>
+        <div class="srch-row__status">${!buyable ? "Taken" : status === "premium" ? "Premium" : "Available"}</div>
+        <div class="srch-row__price"><span class="srch-row__amount">${price}</span><span class="srch-row__renew">${renew}</span></div>
+        ${buyable ? `<button type="button" class="srch-add" data-add-domain="${esc(domain)}" data-price="${price}" data-price-cents="${quote.amountCents ?? ""}" data-label-add="Add"><span data-add-label>Add</span></button>` : ""}
+      </div>`;
+    }).join("");
+    const rowsPanel = rowsHtml
+      ? `<section class="srch-rows" aria-label="Other extensions">
+        <div class="srch-rows__head"><h2>Other extensions</h2>
+          <div class="srch-filters" role="group" aria-label="Filter extensions">
+            <button type="button" class="chip is-active" data-tld-filter="all">All</button>
+            <button type="button" class="chip" data-tld-filter="available">Available only</button>
+            <button type="button" class="chip" data-tld-filter="under20">Under $20</button>
+          </div>
         </div>
-        ${historyEntries}
-      </div>
-    </section>
-    <section class="results-block"><p class="results-block__label">Your search</p>${resultHtml}</section>
-    ${suggestionsHtml}
+        ${rowsHtml}
+      </section>`
+      : `<section class="card srch-prompt"><p>Could not check other extensions right now. Please try again later.</p></section>`;
+    const ideaChips = ideaQuotes.map((quote, i) => {
+      if (!quote || !quote.available) return "";
+      const domain = ideaDomains[i];
+      const price = centsToPrice(quote.amountCents);
+      return `<button type="button" class="chip" data-add-domain="${esc(domain)}" data-price="${price}" data-price-cents="${quote.amountCents ?? ""}" data-label-add="Add"><span class="chip__name">${esc(domain)} <span class="chip__dim">${price}</span></span><span data-add-label>Add</span></button>`;
+    }).join("");
+    const ideasPanel = ideaChips
+      ? `<section class="card srch-ideas"><h2>Ideas like this</h2><p class="srch-ideas__sub">All available right now · tap to add</p><div class="srch-ideas__chips">${ideaChips}</div></section>`
+      : "";
+    mainColumn = `${exactCard}${rowsPanel}${ideasPanel}`;
+  }
+  const historyEntries = `<p class="recent-searches-inline"><span>Recent:</span> <span id="recent-searches-list"></span> <a class="text-action" href="/history">View all history →</a></p>`;
+  const searchBody = `
+    <div class="container srch-layout">
+      <div class="srch-main">${mainColumn}${historyEntries}</div>
+      <aside class="srch-cart" aria-label="Your cart">
+        <h2>Your cart</h2>
+        <div data-cart-panel><p class="srch-cart__empty">Nothing yet. Tap <strong>Add</strong> on any name to keep it here.</p></div>
+      </aside>
+    </div>
     <script type="module">
-      import { addToCart, addToHistory, toggleFavorite, isFavorited, getCart, escapeHtml } from "/assets/js/state.js";
-      import { pulseCartBadge } from "/assets/js/cart-drawer.js";
+      import { addToCart, removeFromCart, isInCart, getCart, getCartSubtotal, addToHistory, toggleFavorite, isFavorited, escapeHtml } from "/assets/js/state.js";
+      import { pulseCartBadge, updateCartBadges } from "/assets/js/cart-drawer.js";
       const q = new URLSearchParams(location.search).get("q")||"";
       const validSearch = ${String(validSearch)};
-      if(q && validSearch){
-        let d = q.toLowerCase(); if(!d.includes(".")) d+=".net";
-        try { addToHistory(q, { domain: d, status: document.querySelector(".status-badge")?.textContent?.includes("Available")?"available":"unavailable", price: document.querySelector(".results-hero strong")?.textContent||null }); } catch {}
+      const card = document.querySelector("[data-exact-card]");
+      if(q && validSearch && card){
+        try { addToHistory(q, { domain: card.dataset.domain, status: card.dataset.status==="available"?"available":"unavailable", price: card.dataset.price && card.dataset.price !== "—" ? card.dataset.price : null }); } catch {}
       }
       // hydrate recent
       try {
         const h = JSON.parse(localStorage.getItem("namenice_history")||"[]").slice(0,3);
-        document.getElementById("recent-searches-list").innerHTML = h.map(e=>'<li><a href="/search?q='+encodeURIComponent(String(e.query||""))+'">'+escapeHtml(e.query)+'</a></li>').join("") || '<li class="muted">No recent searches</li>';
+        document.getElementById("recent-searches-list").innerHTML = h.map(e=>'<a href="/search?q='+encodeURIComponent(String(e.query||""))+'">'+escapeHtml(e.query)+'</a>').join(" · ") || '<span class="muted">No recent searches</span>';
       } catch {}
-      document.querySelectorAll("[data-add-domain]").forEach(btn=>{
-        const markAdded = ()=>{ btn.textContent="Added ✓"; btn.disabled=true; };
-        if(getCart().some(item=>item.domain===btn.dataset.addDomain)) markAdded();
+      // Add/remove toggles (exact card, TLD rows, idea chips) — cart panel + badge update instantly.
+      function paintToggles(){
+        document.querySelectorAll("[data-add-domain]").forEach((btn)=>{
+          const inCart = isInCart(btn.dataset.addDomain);
+          btn.classList.toggle("is-in-cart", inCart);
+          btn.setAttribute("aria-pressed", String(inCart));
+          const label = btn.querySelector("[data-add-label]");
+          if(label) label.textContent = inCart ? "Added ✓" : (btn.dataset.labelAdd || "Add");
+        });
+      }
+      function renderCartPanel(){
+        const panel = document.querySelector("[data-cart-panel]");
+        if(!panel) return;
+        const items = getCart();
+        if(items.length === 0){
+          panel.innerHTML = '<p class="srch-cart__empty">Nothing yet. Tap <strong>Add</strong> on any name to keep it here.</p>';
+          return;
+        }
+        const rows = items.map((item)=>{
+          const price = "$" + (Number.parseFloat(String(item.price||"").replace(/[^0-9.]/g,"")) || 0).toFixed(2);
+          return '<div class="srch-cart__row"><span>'+escapeHtml(item.domain)+'</span><span class="srch-cart__price">'+price+'</span></div>';
+        }).join("");
+        panel.innerHTML = rows + '<div class="srch-cart__total"><span>Total</span><span>$'+getCartSubtotal().toFixed(2)+'</span></div>'
+          + '<a class="button button--primary button--lg srch-cart__checkout" href="/checkout">Checkout</a>'
+          + '<p class="srch-cart__note">Card or account balance</p>';
+      }
+      document.querySelectorAll("[data-add-domain]").forEach((btn)=>{
         btn.addEventListener("click", ()=>{
-          addToCart({ domain: btn.dataset.addDomain, price: btn.dataset.price || "$14.99", cadence: "/ year" });
+          const domain = btn.dataset.addDomain;
+          if(isInCart(domain)) removeFromCart(domain);
+          else addToCart({ domain, price: btn.dataset.price || "", cadence: "/ year" });
           pulseCartBadge();
-          markAdded();
+          paintToggles();
+          renderCartPanel();
+        });
+      });
+      // TLD filters: All / Available only / Under $20 (client-side).
+      document.querySelectorAll("[data-tld-filter]").forEach((btn)=>{
+        btn.addEventListener("click", ()=>{
+          document.querySelectorAll("[data-tld-filter]").forEach((b)=>b.classList.toggle("is-active", b===btn));
+          const filter = btn.dataset.tldFilter;
+          document.querySelectorAll("[data-tld-row]").forEach((row)=>{
+            const available = row.dataset.available === "1";
+            const cents = Number(row.dataset.cents);
+            const show = filter === "all" ? true : filter === "available" ? available : available && Number.isFinite(cents) && cents < 2000;
+            row.hidden = !show;
+          });
         });
       });
       document.querySelectorAll("[data-favorite-domain]").forEach(btn=>{
@@ -559,12 +622,15 @@ app.get("/search", async (c) => {
         btn.addEventListener("click", ()=>{ toggleFavorite({ domain: d }); update(); });
         update();
       });
+      paintToggles();
+      renderCartPanel();
+      updateCartBadges();
     </script>
   `;
   c.header("Cache-Control", "no-store, no-cache, must-revalidate");
   c.header("CDN-Cache-Control", "no-store");
   c.header("Vary", "Accept-Encoding, Cookie");
-  return c.html(shell("Search — Namenice", searchBody, { user, activeTab: "search" }));
+  return c.html(shell("Search — Namenice", searchBody, { user, activeTab: "search", searchNav: q }));
 });
 
 app.get("/favorites", async (c) => {
@@ -929,6 +995,26 @@ app.get("/api/search", async (c) => {
   if (!quote.ok) return c.json({ error: quote.error, domain }, 503);
   const available = quote.quote.available;
   const status = available ? (quote.quote.amountCents && quote.quote.amountCents > 5000 ? "premium" : "available") : "unavailable";
+  const parsed = parseSearchQuery(domain);
+  const rowDomains = parsed
+    ? SEARCH_TLDS.map((tld) => `${parsed.stem}.${tld}`).filter((d) => d !== domain && isValidSearchDomain(d))
+    : [];
+  const rowQuotes = await quoteMany(c.env as any, rowDomains);
+  const results = rowQuotes.map((row, i) => row ? {
+    domain: rowDomains[i],
+    ok: true as const,
+    status: quoteStatus(row),
+    available: row.available,
+    price: centsToPrice(row.amountCents),
+    priceCents: row.amountCents,
+  } : {
+    domain: rowDomains[i],
+    ok: false as const,
+    status: "unknown" as const,
+    available: false,
+    price: null,
+    priceCents: null,
+  });
   return c.json({
     domain,
     status,
@@ -940,7 +1026,8 @@ app.get("/api/search", async (c) => {
     renewalCadence: "/ year",
     message: status === "available" ? "Ready when you are. Review the price before you continue."
       : status === "premium" ? "Premium domains have a separate purchase price."
-      : "This name is already registered."
+      : "This name is already registered.",
+    results,
   });
 });
 
@@ -1040,7 +1127,7 @@ app.get("/billing", async (c) => {
       </div>
     </aside>
   </div>`;
-  return c.html(shell("Billing — Namenice", billingBody, { user, orgId }));
+  return c.html(shell("Billing — Namenice", billingBody, { user, orgId, activeTab: "billing" }));
 });
 
 app.post("/billing/topup", async (c) => {
@@ -1101,7 +1188,7 @@ app.get("/settings", async (c) => {
     : isPersonal
     ? `<form method=post action="/settings/company?org=${orgId}"><label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=company value=1> Company — upgrade this Personal Organization to a Company Organization</label> <button class=btn type=submit>Upgrade to Company →</button></form><p class=muted style=font-size:.85rem>In-place upgrade: Domains and balance stay on this org (no move). Needed to invite members.</p>`
     : `<div class=card style="border-left:4px solid #111"><b>Company Organization</b><p class=muted style=font-size:.9rem>Upgrade complete — members and invites enabled. Domains/balance unchanged on org ${orgId}.</p></div><div class=card><h3 style=margin:0>Invite member</h3><form method=post action="/settings/members/invite?org=${orgId}" style="display:grid;gap:.5rem;max-width:420px"><label>Email <input name=email type=email required placeholder="colleague@company.com"></label><label>Role <select name=role><option value=viewer selected>viewer — read only</option><option value=billing>billing — money only</option><option value=admin>admin — domains + DNS</option><option value=owner>owner — all</option></select></label><button class=btn type=submit>Invite →</button></form><p class=muted style=font-size:.82rem>Invites live 7 days (token_hash) — invitee accepts via POST /invite/accept with token. Personal Organization stays solo.</p></div><div class=card><h3 style=margin:0>Accept invite</h3><form method=post action="/invite/accept" style="display:flex;gap:.5rem"><input name=token placeholder="paste invite token" required style="flex:1"><button class=btn type=submit>Accept →</button></form></div>`;
-  return c.html(shell("Settings — Namenice", `<div class=card><h3 style=margin:0>Settings — ${esc(org?.title||`org ${orgId}`)}</h3><div class=muted style=font-size:.9rem>Type: ${isPersonal ? "Personal Organization (solo — treated as you)" : "Company Organization"}</div>${companyToggle}<p style="margin-top:.8rem"><a href="/billing?org=${orgId}">Billing →</a> · <a href="/domains?org=${orgId}">Domains →</a></p></div>`, { user, orgId }));
+  return c.html(shell("Settings — Namenice", `<div class=card><h3 style=margin:0>Settings — ${esc(org?.title||`org ${orgId}`)}</h3><div class=muted style=font-size:.9rem>Type: ${isPersonal ? "Personal Organization (solo — treated as you)" : "Company Organization"}</div>${companyToggle}<p style="margin-top:.8rem"><a href="/billing?org=${orgId}">Billing →</a> · <a href="/domains?org=${orgId}">Domains →</a></p></div>`, { user, orgId, activeTab: "team" }));
 });
 
 app.post("/settings/company", async (c) => {
@@ -1184,83 +1271,50 @@ app.get("/domains", async (c) => {
   const member = await requireOrgMember(c, orgId);
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
-  const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
-  const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
-  const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
-  const domainsLabel = isPersonal ? `Your domains — org ${orgId}` : `Organization domains — org ${orgId}`;
   const domainsResult = await c.env.DB.prepare("SELECT domain, status, expires_at, auto_renew, locked, privacy FROM domains WHERE org_id=? ORDER BY expires_at ASC, domain").bind(orgId).all().catch(()=>({results:[]})) as any;
   const allDomains: any[] = domainsResult.results || [];
-  const qDomain = c.req.query("q") || "";
-  const searchResult = (c as any).get("searchResult") || null;
-  const dynOk = dynadotConfigured(c.env as any);
+  const dnsCounts = await c.env.DB.prepare("SELECT domain, COUNT(*) AS c FROM dns_records WHERE org_id=? GROUP BY domain").bind(orgId).all().catch(()=>({results:[]})) as any;
+  const recordCounts: Record<string, number> = {};
+  for (const row of ((dnsCounts.results || []) as any[])) recordCounts[String(row.domain)] = Number(row.c) || 0;
+  const hasRecords = (domain: string) => (recordCounts[domain] || 0) > 0;
   const nowSec = Math.floor(Date.now()/1000);
-  const EXPIRING_SOON_SEC = 60*86400;
+  const RENEW_WARN_SEC = 30*86400;
   const fmtDate = (sec:any) => sec ? new Date(Number(sec)*1000).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric"}) : "—";
-  const expiringCount = allDomains.filter((d:any)=> d.expires_at && d.status==="active" && (Number(d.expires_at)-nowSec) < EXPIRING_SOON_SEC && Number(d.expires_at) > nowSec).length;
-  const activeCount = allDomains.filter((d:any)=> d.status==="active" && !(d.expires_at && (Number(d.expires_at)-nowSec) < EXPIRING_SOON_SEC && Number(d.expires_at) > nowSec)).length;
-  const hasDomains = allDomains.length>0;
-  const dashRows = hasDomains ? allDomains.map((d:any)=>{
-    const isExpiring = d.expires_at && d.status==="active" && (Number(d.expires_at)-nowSec) < EXPIRING_SOON_SEC && Number(d.expires_at) > nowSec;
-    const icon = isExpiring
-      ? `<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3l8 14H2l8-14z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M10 8v3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="10" cy="14" r=".8" fill="currentColor"/></svg>`
-      : `<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/></svg>`;
-    const iconClass = isExpiring ? "dash-row__icon--warning" : "dash-row__icon--active";
-    const statusLabel = isExpiring ? "Expiring soon" : (d.status==="active" ? "Active" : esc(d.status));
-    const badgeClass = isExpiring ? "premium" : (d.status==="active" ? "available" : "premium");
-    const privacyLabel = d.privacy ? "✓ Protected" : "Not enabled";
-    const privacyColor = d.privacy ? "var(--color-status-success)" : "inherit";
-    const renewLabel = d.auto_renew ? "On" : "Off";
-    return `<div class="dash-row" data-domain="${esc(d.domain)}" data-status="${isExpiring ? "expiring" : d.status}" data-privacy="${d.privacy?1:0}">
-      <span class="dash-row__icon ${iconClass}">${icon}</span>
-      <div class="dash-row__name"><div><strong>${esc(d.domain)}</strong><span class="status-badge status-badge--${badgeClass}" style="margin-left:8px;">● ${statusLabel}</span><p class="dash-row__meta">Renews ${fmtDate(d.expires_at)} · Auto-renew ${renewLabel}</p></div></div>
-      <div class="dash-row__col"><p>Privacy</p><p style="color:${privacyColor};">${privacyLabel}</p></div>
-      <div class="dash-row__col"><p>DNS</p><p>namenice DNS</p></div>
-      <div class="dash-row__actions"><a href="/domains/${esc(encodeURIComponent(d.domain))}/dns?org=${orgId}" class="button button--secondary" style="height:36px; padding:0 16px;">Manage</a></div>
+  const statusPill = (d: any) => d.status === "active"
+    ? (hasRecords(d.domain) ? `<span class="pill pill--success">Live</span>` : `<span class="pill pill--warning">Not connected</span>`)
+    : `<span class="pill pill--muted">${esc(String(d.status).charAt(0).toUpperCase() + String(d.status).slice(1))}</span>`;
+  const attention = allDomains.filter((d: any) => d.status === "active" && !hasRecords(d.domain));
+  const upcoming = allDomains.filter((d: any) => d.status === "active" && d.expires_at).sort((a: any, b: any) => Number(a.expires_at) - Number(b.expires_at));
+  const nextRenewal: any = upcoming[0] || null;
+  const countLine = `${allDomains.length} domain${allDomains.length === 1 ? "" : "s"} · ${attention.length === 0 ? "all healthy" : `${attention.length} need${attention.length === 1 ? "s" : ""} attention`}`;
+  const domRows = allDomains.map((d: any) => {
+    const renewSoon = !!d.expires_at && (Number(d.expires_at) - nowSec) < RENEW_WARN_SEC;
+    const dnsHref = `/domains/${esc(encodeURIComponent(d.domain))}/dns?org=${orgId}`;
+    return `<tr><td><strong>${esc(d.domain)}</strong></td><td>${statusPill(d)}</td>`
+      + `<td${renewSoon ? ` class="dom-renew--soon"` : ""}>${fmtDate(d.expires_at)}</td>`
+      + `<td>${d.auto_renew ? "On" : "Off"}</td>`
+      + `<td class="dom-actions"><a href="${dnsHref}">${hasRecords(d.domain) ? "Manage" : "Connect"}</a></td></tr>`;
+  }).join("");
+  const attentionCard = attention.length === 0 ? "" : `<div class="card card--amber dom-card"><p class="dom-card__label">Needs attention</p>`
+    + `<p class="dom-card__big">${esc(attention[0].domain)} isn't pointing anywhere yet.${attention.length > 1 ? ` (+${attention.length - 1} more)` : ""}</p>`
+    + `<a href="/domains/${esc(encodeURIComponent(attention[0].domain))}/dns?org=${orgId}">Connect it →</a></div>`;
+  const dashBody = `<div class="container dom-page">
+      <div class="dom-head"><div><h1 class="page-title">Your domains</h1><p class="page-subtitle">${countLine}</p></div>
+        <div class="dom-head__actions"><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer in</a><a href="/search" class="button button--primary">+ New domain</a></div></div>
+      ${allDomains.length === 0
+        ? `<section class="card dom-empty"><p>You don’t have any domains yet. Search for a name or transfer a domain you already own.</p><div class="dom-empty__actions"><a href="/search" class="button button--primary">Search domains</a><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer a domain</a></div></section>`
+        : `<div class="dom-cards">
+          <div class="card dom-card"><p class="dom-card__label">Balance</p><p class="dom-card__big">$${(balance/100).toFixed(2)}</p><a href="/billing?org=${orgId}">Top up</a></div>
+          <div class="card dom-card"><p class="dom-card__label">Next renewal</p>${nextRenewal ? `<p class="dom-card__big">${fmtDate(nextRenewal.expires_at)}</p><p class="dom-card__sub">${esc(nextRenewal.domain)} · Auto-renew ${nextRenewal.auto_renew ? "on" : "off"} · Balance $${(balance/100).toFixed(2)}</p>` : `<p class="dom-card__big">—</p><p class="dom-card__sub">No dated renewals</p>`}</div>
+          ${attentionCard}
+        </div>
+        <section class="dom-table-wrap"><table class="dom-table">
+          <thead><tr><th>Domain</th><th>Status</th><th>Renews</th><th>Auto-renew</th><th></th></tr></thead>
+          <tbody>${domRows}</tbody>
+        </table></section>
+        <p class="dom-links"><a class="text-action" href="/orders?org=${orgId}">View orders →</a> · <a class="text-action" href="/audit?org=${orgId}">Audit log →</a></p>`}
     </div>`;
-  }).join("") : "";
-  const emptyState = `<div class="dash-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" stroke="currentColor" stroke-width="1.2"/></svg><p>You don’t have any domains yet. Search for a name, favorite one you like, or transfer a domain you already own.</p><div style="display:flex; gap: var(--space-3); justify-content:center; flex-wrap:wrap;"><a href="/search" class="button button--primary">Search domains</a><a href="/transfer" class="button button--secondary">Transfer a domain</a></div></div>`;
-  const searchBuyCard = `<section style="background:var(--color-surface-raised); border:var(--border-default); border-radius:12px; padding:var(--space-5); margin-bottom:var(--space-6);"><h3 style="margin:0 0 var(--space-3); font-size:15px;">Search & buy — Dynadot ${dynOk ? (isSandboxEnabled(c.env as any)?'<span class="status-badge" style="margin-left:8px;">sandbox</span>':'<span class="status-badge status-badge--available" style="margin-left:8px;">● live</span>') : '<span style="color:var(--color-text-secondary); font-weight:400; font-size:13px;">(not configured)</span>'}</h3><form method="post" action="/domains/search?org=${orgId}" style="display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:center;"><input class="field" name="domain" placeholder="example.com" value="${esc(qDomain)}" required style="flex:1; min-width:220px;"><button class="button button--primary" type="submit">Check availability</button></form><p class="taken-domain__dates" style="margin: var(--space-3) 0 0;">Price includes $2 service fee. Pay from balance or Stripe Checkout.</p>${searchResult?`<div style="margin-top:var(--space-5); padding:var(--space-4); border:var(--border-default); border-radius:8px;"><strong>${esc(searchResult.domain)}</strong> — ${searchResult.available?'<span class="status-badge status-badge--available">● available</span>':'<span class="status-badge status-badge--premium">● taken</span>'} ${searchResult.price?`· $${searchResult.price} /yr`: ""} ${searchResult.available?`<form method="post" action="/domains/buy?org=${orgId}" style="margin-top:var(--space-3); display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:center;"><input type="hidden" name="domain" value="${esc(searchResult.domain)}"><select class="field" name="duration" style="width:auto; min-width:90px;"><option value="1">1y</option><option value="2">2y</option><option value="5">5y</option><option value="10">10y</option></select><label style="font-size:13px; display:flex; align-items:center; gap:6px;"><input type="checkbox" name="pay_from_balance" value="1" checked> Pay from balance ($${(balance/100).toFixed(2)})</label><button class="button button--primary">Buy ${esc(searchResult.domain)}</button></form>`:""}</div>`:""}</section>`;
-  const dashBody = `<div class="dash-layout">
-      <section>
-        <h1 class="search-toolbar__heading" style="margin-top: var(--space-8);">Welcome back, ${esc(user.email.split("@")[0])}.</h1>
-        <p class="taken-domain__dates">Manage your domains, renewals, and settings all in one place.</p>
-        ${searchBuyCard}
-        <div class="dash-search"><input type="text" id="dash-search-input" placeholder="Search your domains" aria-label="Search your domains" /><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M18 18l-3.8-3.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
-        <div class="dash-filters"><button type="button" data-filter="all" class="is-active">All domains (${allDomains.length})</button><button type="button" data-filter="active">Active (${activeCount})</button><button type="button" data-filter="expiring">Expiring soon (${expiringCount})</button></div>
-        <div id="dash-rows">${hasDomains ? dashRows : emptyState}</div>
-      </section>
-      <aside>
-        <div class="dash-sidebar-card"><h3>Overview</h3><div class="dash-summary-row"><span>Total domains</span><strong>${allDomains.length}</strong></div><div class="dash-summary-row"><span>Expiring soon</span><strong>${expiringCount}</strong></div><div class="dash-summary-row"><span>Balance</span><strong>$${(balance/100).toFixed(2)}</strong></div><a href="/billing?org=${orgId}" class="button button--secondary">Manage billing</a></div>
-        <div class="dash-sidebar-card"><h3>Quick actions</h3>${hasDomains ? `<a href="/domains/${esc(encodeURIComponent(allDomains[0]?.domain||"example.com"))}/dns?org=${orgId}" class="dash-quick-action"><svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 8h14" stroke="currentColor" stroke-width="1.4"/></svg> Manage DNS</a><a href="/billing?org=${orgId}" class="dash-quick-action"><svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M7 10.5l2 2 4-4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Enable auto-renew</a><a href="/account" class="dash-quick-action"><svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="7" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M4 17c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Update contact info</a>` : `<p class="taken-domain__dates" style="margin:0;">Quick actions show up here once you have a domain to manage.</p>`}</div>
-        <div class="dash-sidebar-card"><h3>Recent activity</h3><p class="taken-domain__dates" style="margin:0;"><a class="text-action" href="/orders?org=${orgId}">View orders →</a> · <a class="text-action" href="/audit?org=${orgId}">Audit log →</a></p></div>
-      </aside>
-    </div>
-    <script>
-    (function(){
-      const input = document.getElementById('dash-search-input');
-      const rows = Array.from(document.querySelectorAll('#dash-rows .dash-row'));
-      const filterBtns = document.querySelectorAll('[data-filter]');
-      let statusFilter = 'all';
-      function apply(){
-        const q = (input?.value||'').toLowerCase().trim();
-        rows.forEach(r=>{
-          const dom = (r.getAttribute('data-domain')||'').toLowerCase();
-          const st = r.getAttribute('data-status')||'';
-          const matchQ = !q || dom.includes(q);
-          const matchStatus = statusFilter==='all' || (statusFilter==='active' && st==='active') || (statusFilter==='expiring' && st==='expiring');
-          r.style.display = (matchQ && matchStatus) ? '' : 'none';
-        });
-      }
-      input?.addEventListener('input', apply);
-      filterBtns.forEach(b=> b.addEventListener('click', ()=>{
-        filterBtns.forEach(x=> x.classList.remove('is-active'));
-        b.classList.add('is-active');
-        statusFilter = b.getAttribute('data-filter')||'all';
-        apply();
-      }));
-    })();
-    <\/script>`;
-  return c.html(shell("My Domains — Namenice", dashBody, { user, orgId }));
+  return c.html(shell("My Domains — Namenice", dashBody, { user, orgId, activeTab: "domains" }));
 });
 
 app.post("/domains/search", async (c) => {
@@ -1680,7 +1734,7 @@ app.get("/api/keys", async (c) => {
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const rows = await c.env.DB.prepare("SELECT id, label, prefix, scopes, last_used_at, expires_at, created_at FROM api_keys WHERE org_id=? ORDER BY created_at DESC").bind(orgId).all().catch(()=>({results:[]})) as any;
   const list = (rows.results||[]).map((r:any)=>`<tr><td><code>${esc(r.prefix)}***</code></td><td>${esc(r.label)}</td><td class=muted>${esc(r.scopes)}</td><td>${r.last_used_at?new Date(r.last_used_at*1000).toISOString().slice(0,10):"—"}</td><td><form method=post action="/api/keys/revoke?org=${orgId}" style="display:inline"><input type=hidden name=id value="${r.id}"><button class=btn style="background:#fff;color:#111">Revoke</button></form></td></tr>`).join("") || `<tr><td colspan=5 class=muted>No keys — create one below</td></tr>`;
-  return c.html(shell("API Keys — Namenice", `<div class=card><h3 style=margin:0>API keys — org ${orgId}</h3><table><thead><tr><th>Key</th><th>Label</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Create key</h3><form method=post action="/api/keys?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=label placeholder="CI / Terraform" required><select name=scopes><option value="domains:read,dns:read">read</option><option value="domains:read,dns:read,dns:write" selected>dns:write</option><option value="domains:read,dns:read,dns:write,billing:read">full</option></select><button class=btn>Create — shows once</button></form><p class=muted style="font-size:.82rem">Use <code>Authorization: Bearer nn_&lt;token&gt;</code> and <code>X-Org: ${orgId}</code>. Configure signed event delivery from the <a href="/webhooks?org=${orgId}">Webhooks page</a>.</p></div>`, { user, orgId }));
+  return c.html(shell("API Keys — Namenice", `<div class=card><h3 style=margin:0>API keys — org ${orgId}</h3><table><thead><tr><th>Key</th><th>Label</th><th>Scopes</th><th>Last used</th><th></th></tr></thead><tbody>${list}</tbody></table></div><div class=card><h3 style=margin:0>Create key</h3><form method=post action="/api/keys?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=label placeholder="CI / Terraform" required><select name=scopes><option value="domains:read,dns:read">read</option><option value="domains:read,dns:read,dns:write" selected>dns:write</option><option value="domains:read,dns:read,dns:write,billing:read">full</option></select><button class=btn>Create — shows once</button></form><p class=muted style="font-size:.82rem">Use <code>Authorization: Bearer nn_&lt;token&gt;</code> and <code>X-Org: ${orgId}</code>. Configure signed event delivery from the <a href="/webhooks?org=${orgId}">Webhooks page</a>.</p></div>`, { user, orgId, activeTab: "developers" }));
 });
 app.post("/api/keys", async (c) => {
   const orgId = Number(c.req.query("org") || 1);

@@ -14,7 +14,7 @@ function escapeHtml(value) {
 }
 
 export function wordmark() {
-  return `<span class="wordmark">name<mark class="wordmark__accent">nice</mark></span>`;
+  return `<span class="wordmark">namenice<span class="wordmark__dot" aria-hidden="true">.</span></span>`;
 }
 
 function initials(name) {
@@ -23,24 +23,13 @@ function initials(name) {
 
 export function authNavLinks(signedIn, username) {
   if (signedIn) {
-    return `<button type="button" class="site-nav__avatar-trigger" data-account-trigger aria-haspopup="true" aria-expanded="false">
-      <span class="site-nav__avatar">${initials(username)}</span>
-      <span class="site-nav__avatar-name">${username}</span>
-      <span aria-hidden="true">\u2304</span>
-    </button>`;
+    return `<button type="button" class="topnav__avatar" data-account-trigger aria-haspopup="true" aria-expanded="false" aria-label="Account">${escapeHtml(String(username || "n").trim().charAt(0).toUpperCase() || "N")}</button>`;
   }
-  return `<a href="signin.html">Sign in</a><a href="signup.html">Create account</a>`;
+  return `<a href="/#pricing" class="topnav__link">Pricing</a><a href="/transfer" class="topnav__link">Transfer</a><a href="/signin" class="topnav__link">Sign in</a><a href="/signup" class="topnav__cta">Get started</a>`;
 }
 
 export function cartIcon({ count = 0 } = {}) {
-  return `<a href="cart.html" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="7.5" cy="17.5" r="1" fill="currentColor"/>
-      <circle cx="14" cy="17.5" r="1" fill="currentColor"/>
-    </svg>
-    ${count > 0 ? `<span class="cart-icon__count">${count}</span>` : ""}
-  </a>`;
+  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart${count > 0 ? `<span class="cart-icon__count">${count}</span>` : ""}</a>`;
 }
 
 export function statusBadge(status) {

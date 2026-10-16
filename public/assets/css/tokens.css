@@ -34,6 +34,7 @@
   --color-status-warning-border: #F5D9A8;
   --color-status-error: #B42318;
   --color-status-error-surface: #F8E7E4;
+  --color-error: #B42318; /* alias kept for live drawer/menu rules */
   /* type */
   --font-display: "Bricolage Grotesque", system-ui, sans-serif; /* weights 500/700 */
   --font-ui: "Geist", system-ui, sans-serif;                    /* weights 400/500/600 */
@@ -49,6 +50,7 @@
   --space-10: 64px;
   --radius-subtle: 4px;
   --radius-sm: 4px;
+  --radius-md: 12px; /* menus, drawers, small panels */
   --radius-control: 12px;  /* buttons, inputs */
   --radius-search: 20px;   /* search panels */
   --radius-card: 20px;     /* panels */
