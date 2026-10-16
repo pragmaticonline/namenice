@@ -92,4 +92,17 @@ a.chip:hover { border-color: var(--color-text-secondary); color: var(--color-tex
 @media (max-width: 720px) {
   .topnav__inner { padding: 12px 0; }
   .page-title { font-size: 32px; }
+  table:not([class]) { display: block; max-width: 100%; overflow-x: auto; }
 }
+
+/* Legacy templates: bare controls get the system look. Classed components
+   (.field, .button, .home-search input, .topnav__search input) win ties by
+   source order or higher specificity, so this only touches unclassed markup. */
+.btn, button:not([class]) { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: var(--radius-control); border: 1px solid var(--color-border-strong); background: #FFFFFF; color: var(--color-text-primary); font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.btn:hover, button:not([class]):hover { border-color: var(--color-text-secondary); }
+input:not([class]):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select:not([class]), textarea:not([class]) { font: inherit; font-size: 15px; color: var(--color-text-primary); background: #FFFFFF; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); min-height: 44px; padding: 8px 12px; box-sizing: border-box; }
+textarea:not([class]) { min-height: 96px; width: 100%; resize: vertical; }
+form label:not([class]) { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+table:not([class]) { width: 100%; border-collapse: collapse; font-size: 14px; }
+table:not([class]) th, table:not([class]) td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--color-divider); }
+table:not([class]) th { color: var(--color-text-muted); font-size: 13px; font-weight: 500; }
