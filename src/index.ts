@@ -85,12 +85,10 @@ function wordmarkHtml(): string {
 }
 
 function cartBadgeHtml(count = 0): string {
-  // The badge slot is always rendered so the client-side count update never
-  // changes the pill width (no header wobble). Empty shows a cart glyph in a
-  // circle; a real count swaps in via the .is-zero toggle.
-  const empty = count <= 0 ? " is-zero" : "";
+  // The badge always shows the number (lime, even at zero) so the pill
+  // width never changes after load (no header wobble).
   const hidden = count <= 0 ? ` aria-hidden="true"` : "";
-  return `<span class="cart-icon__count${empty}"${hidden}><span class="cart-icon__placeholder" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7.5" cy="17.5" r="1.2" fill="currentColor"/><circle cx="14" cy="17.5" r="1.2" fill="currentColor"/></svg></span><span class="cart-icon__num">${count}</span></span>`;
+  return `<span class="cart-icon__count"${hidden}><span class="cart-icon__num">${count}</span></span>`;
 }
 
 function cartIconHtml(count = 0): string {
@@ -1311,7 +1309,8 @@ app.get("/domains", async (c) => {
   const attention = allDomains.filter((d: any) => d.status === "active" && !hasRecords(d.domain));
   const upcoming = allDomains.filter((d: any) => d.status === "active" && d.expires_at).sort((a: any, b: any) => Number(a.expires_at) - Number(b.expires_at));
   const nextRenewal: any = upcoming[0] || null;
-  const countLine = `${allDomains.length} domain${allDomains.length === 1 ? "" : "s"} · ${attention.length === 0 ? "all healthy" : `${attention.length} need${attention.length === 1 ? "s" : ""} attention`}`;
+  const countLine = allDomains.length === 0 ? ""
+    : `${allDomains.length} domain${allDomains.length === 1 ? "" : "s"}${attention.length === 0 ? " · all healthy" : ""}`;
   const domRows = allDomains.map((d: any) => {
     const renewSoon = !!d.expires_at && (Number(d.expires_at) - nowSec) < RENEW_WARN_SEC;
     const dnsHref = `/domains/${esc(encodeURIComponent(d.domain))}/dns?org=${orgId}`;
@@ -1323,11 +1322,16 @@ app.get("/domains", async (c) => {
   const attentionCard = attention.length === 0 ? "" : `<div class="card card--amber dom-card"><p class="dom-card__label">Needs attention</p>`
     + `<p class="dom-card__big">${esc(attention[0].domain)} isn't pointing anywhere yet.${attention.length > 1 ? ` (+${attention.length - 1} more)` : ""}</p>`
     + `<a href="/domains/${esc(encodeURIComponent(attention[0].domain))}/dns?org=${orgId}">Connect it →</a></div>`;
+  const headActions = allDomains.length === 0 ? ""
+    : `<div class="dom-head__actions"><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer in</a><a href="/search" class="button button--primary">+ New domain</a></div>`;
   const dashBody = `<div class="container dom-page">
-      <div class="dom-head"><div><h1 class="page-title">Your domains</h1><p class="page-subtitle">${countLine}</p></div>
-        <div class="dom-head__actions"><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer in</a><a href="/search" class="button button--primary">+ New domain</a></div></div>
+      <div class="dom-head"><div><h1 class="page-title">Your domains</h1>${countLine ? `<p class="page-subtitle">${countLine}</p>` : ""}</div>
+        ${headActions}</div>
       ${allDomains.length === 0
-        ? `<section class="card dom-empty"><p class="badger-moment">${badgerMark(96)}</p><p>Nothing here yet — let's find you a name. Search for one, or transfer a domain you already own.</p><div class="dom-empty__actions"><a href="/search" class="button button--primary">Search domains</a><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer a domain</a></div></section>`
+        ? `<div class="dom-cards">
+          <div class="card dom-card"><p class="dom-card__label">Balance</p><p class="dom-card__big">$${(balance/100).toFixed(2)}</p><a href="/billing?org=${orgId}">Top up</a></div>
+        </div>
+        <section class="card dom-empty"><p class="badger-moment">${badgerMark(96)}</p><h2>No domains yet</h2><p class="dom-empty__text">Search for a name or bring over a domain you already own.</p><div class="dom-empty__actions"><a href="/search" class="button button--primary">Search domains</a><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer a domain</a></div></section>`
         : `<div class="dom-cards">
           <div class="card dom-card"><p class="dom-card__label">Balance</p><p class="dom-card__big">$${(balance/100).toFixed(2)}</p><a href="/billing?org=${orgId}">Top up</a></div>
           <div class="card dom-card"><p class="dom-card__label">Next renewal</p>${nextRenewal ? `<p class="dom-card__big">${fmtDate(nextRenewal.expires_at)}</p><p class="dom-card__sub">${esc(nextRenewal.domain)} · Auto-renew ${nextRenewal.auto_renew ? "on" : "off"} · Balance $${(balance/100).toFixed(2)}</p>` : `<p class="dom-card__big">—</p><p class="dom-card__sub">No dated renewals</p>`}</div>

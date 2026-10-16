@@ -22,7 +22,6 @@ export function updateCartBadges() {
     const num = badge.querySelector(".cart-icon__num");
     if (num) num.textContent = String(count);
     else badge.textContent = String(count);
-    badge.classList.toggle("is-zero", count === 0);
     if (count === 0) badge.setAttribute("aria-hidden", "true");
     else badge.removeAttribute("aria-hidden");
   });

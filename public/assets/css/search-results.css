@@ -295,7 +295,12 @@
 
 /* ---- Redesign domains (HANDOFF: Domains.dc.html) ---- */
 .dom-page { padding: 24px 0 56px; }
-.dom-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.dom-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 24px; }
+.dom-empty { text-align: center; padding-top: 64px; padding-bottom: 64px; }
+.dom-empty .badger-mark { margin: 0 auto; }
+.dom-empty h2 { margin: 0 0 8px; font-size: 24px; font-weight: 700; color: var(--color-text-primary); }
+.dom-empty__text { margin: 0 0 24px; color: var(--color-text-secondary); font-size: 15px; }
+.dom-empty__actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .dom-head__actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .dom-cards { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .dom-card__label { margin: 0; color: var(--color-text-secondary); font-size: 14px; }
