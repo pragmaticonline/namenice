@@ -17,17 +17,14 @@ export function updateCartBadges() {
   const count = getCartCount();
   document.querySelectorAll(".cart-icon").forEach((icon) => {
     icon.setAttribute("aria-label", count > 0 ? `Cart, ${count} item${count === 1 ? "" : "s"}` : "Cart");
-    let badge = icon.querySelector(".cart-icon__count");
-    if (!badge) {
-      icon.insertAdjacentHTML("beforeend", `<span class="cart-icon__count is-zero" aria-hidden="true">0</span>`);
-      badge = icon.querySelector(".cart-icon__count");
-    }
-    if (badge) {
-      badge.textContent = String(count);
-      badge.classList.toggle("is-zero", count === 0);
-      if (count === 0) badge.setAttribute("aria-hidden", "true");
-      else badge.removeAttribute("aria-hidden");
-    }
+    const badge = icon.querySelector(".cart-icon__count");
+    if (!badge) return;
+    const num = badge.querySelector(".cart-icon__num");
+    if (num) num.textContent = String(count);
+    else badge.textContent = String(count);
+    badge.classList.toggle("is-zero", count === 0);
+    if (count === 0) badge.setAttribute("aria-hidden", "true");
+    else badge.removeAttribute("aria-hidden");
   });
 }
 
