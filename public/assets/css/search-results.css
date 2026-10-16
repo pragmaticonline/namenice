@@ -321,5 +321,18 @@
 .dom-table .dom-actions { text-align: right; white-space: nowrap; }
 .dom-table .dom-actions a { color: var(--color-action-primary); font-weight: 500; }
 .dom-links { margin: 16px 0 0; font-size: 14px; color: var(--color-text-secondary); }
+
+/* Settings: breathing room for org type, invites and tokens. */
+.settings-page { max-width: 760px; padding: 24px 0 56px; }
+.settings-stack { display: flex; flex-direction: column; gap: 16px; margin-top: 24px; }
+.settings-stack .card h3 { margin: 0 0 4px; font-size: 18px; color: var(--color-text-primary); }
+.settings-lede { margin: 0 0 4px; color: var(--color-text-secondary); font-size: 15px; line-height: 1.5; }
+.settings-form { display: flex; flex-direction: column; gap: 12px; max-width: 420px; margin-top: 16px; }
+.settings-form--row { flex-direction: row; align-items: end; max-width: none; }
+.settings-form--row input { flex: 1; min-width: 0; }
+.settings-form .button { align-self: flex-start; }
+.settings-form--row .button { align-self: auto; }
+.settings-note { margin: 12px 0 0; font-size: 13px; color: var(--color-text-secondary); }
+.settings-links { margin: 24px 0 0; font-size: 14px; }
 .dom-empty p { margin: 0 0 20px; color: var(--color-text-secondary); font-size: 15px; line-height: 1.5; }
 .dom-empty__actions { display: flex; gap: 8px; flex-wrap: wrap; }
