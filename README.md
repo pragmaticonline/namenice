@@ -18,3 +18,7 @@ npm install
 npm run db:init:local
 npm run dev
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
