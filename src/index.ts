@@ -72,7 +72,7 @@ function shell(title: string, body: string, opts?: { user?: { email:string } | n
       </div>
     </nav>`;
   const accountMenuUser = user ? esc(user.email) : "namenice";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Serif+Thai:wght@400;500&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><script>window.__NAMENICE_SIGNED_IN__=${user ? "true" : "false"};window.__NAMENICE_USER__=${JSON.stringify(user?.email||"")};</script><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice \u2014 find a name worth owning. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><script>window.__NAMENICE_SIGNED_IN__=${user ? "true" : "false"};window.__NAMENICE_USER__=${JSON.stringify(user?.email||"")};</script><div class="page-shell">${nav}${body}<footer class="site-footer"><span class="wordmark">${wordmarkHtml()}</span><div class="site-footer__text"><p>namenice — find a name worth owning. Pricing shown includes first-year registration.</p><p class="site-footer__copyright">\u00A9 ${new Date().getFullYear()} namenice</p></div></footer></div><script type="module">
 import { initCartDrawer } from "/assets/js/cart-drawer.js";
 import { initAccountMenu } from "/assets/js/account-menu.js";
 try { initCartDrawer(); } catch(e) { console.warn(e); }
@@ -154,17 +154,56 @@ async function getUserOrgIds(env: any, email: string): Promise<number[]> {
   } catch { return []; }
 }
 
-async function requireExplicitOrg(c: any, email: string): Promise<{ orgId: number; ok: true } | { ok: false; response: Response }> {
+async function resolveOrgId(env: any, raw: string | null): Promise<number | null> {
+  if (raw == null || String(raw).trim() === "") return 1;
+  const str = String(raw).trim();
+  if (str.startsWith("org_")) {
+    try {
+      const row = await env.DB.prepare("SELECT id FROM organizations WHERE public_id=?").bind(str).first().catch(()=>null) as any;
+      if (row?.id) return row.id as number;
+    } catch {}
+    return null;
+  }
+  const n = Number(str);
+  if (Number.isFinite(n) && n >= 1 && String(n) === str) return n;
+  // also allow public_id lookup for non org_ prefixed? try slug or public_id fallback
+  try {
+    const row2 = await env.DB.prepare("SELECT id FROM organizations WHERE public_id=? OR slug=?").bind(str, str).first().catch(()=>null) as any;
+    if (row2?.id) return row2.id as number;
+  } catch {}
+  return null;
+}
+
+async function getOrgPublicId(env: any, orgId: number): Promise<string> {
+  try {
+    const row = await env.DB.prepare("SELECT public_id FROM organizations WHERE id=?").bind(orgId).first().catch(()=>null) as any;
+    if (row?.public_id) return row.public_id as string;
+  } catch {}
+  return String(orgId);
+}
+
+async function requireExplicitOrg(c: any, email: string): Promise<{ orgId: number; publicId: string; ok: true } | { ok: false; response: Response }> {
   const raw = c.req.query("org");
   const hasExplicit = raw != null && String(raw).trim() !== "";
-  let orgId = hasExplicit ? Number(raw) : 1;
-  if (!email) return { orgId, ok: true } as any;
+  let orgId: number | null = null;
+  if (hasExplicit) {
+    const resolved = await resolveOrgId(c.env as any, String(raw));
+    if (resolved == null) return { ok: false, response: c.text("invalid org", 400) } as any;
+    orgId = resolved;
+  } else {
+    orgId = 1;
+  }
+  if (!email) {
+    const publicId = await getOrgPublicId(c.env as any, orgId);
+    return { orgId, publicId, ok: true } as any;
+  }
   const ids = await getUserOrgIds(c.env as any, email);
   if (ids.length > 1 && !hasExplicit) return { ok: false, response: c.text("explicit org required — select ?org=", 400) } as any;
   if (hasExplicit && ids.length && !ids.includes(orgId)) return { ok: false, response: c.text("forbidden — org not yours", 403) } as any;
   if (!hasExplicit && ids.length === 1 && ids[0] !== orgId) orgId = ids[0];
-  if (!Number.isFinite(orgId) || orgId < 1) return { ok: false, response: c.text("invalid org", 400) } as any;
-  return { orgId, ok: true } as any;
+  if (!Number.isFinite(orgId as number) || (orgId as number) < 1) return { ok: false, response: c.text("invalid org", 400) } as any;
+  const publicId = await getOrgPublicId(c.env as any, orgId as number);
+  return { orgId: orgId as number, publicId, ok: true } as any;
 }
 
 app.use("*", async (c, next) => {
@@ -250,7 +289,7 @@ function signinPage(mode: "signin" | "signup" = "signin", env:any = {}, next="/d
   const title = isSignup ? "Create your account" : "Sign in to namenice";
   const lede = isSignup
     ? "Search stays free forever. An account is only needed for buying, DNS, and billing."
-    : "Welcome back \u2014 sign in to manage your domains.";
+    : "Welcome back — sign in to manage your domains.";
   const btnLabel = isSignup ? "Create account" : "Sign in";
   const switchText = isSignup ? "Already have an account?" : "New to namenice?";
   const switchHref = `${isSignup ? "/signin" : "/signup"}?next=${encodeURIComponent(next)}`;
@@ -354,7 +393,7 @@ app.get("/", async (c) => {
         <p id="search-helper" class="signature-search__helper">Search is free. Create an account when you\u2019re ready.</p>
       </section>
     </div>
-    ${user ? `<p class="taken-domain__dates" style="text-align:center; margin: var(--space-4) 0 0;">Already own a domain? <a class="text-action" href="/transfer">Transfer it to Namenice \u2192</a></p>` : ""}
+    ${user ? `<p class="taken-domain__dates" style="text-align:center; margin: var(--space-4) 0 0;">Already own a domain? <a class="text-action" href="/transfer">Transfer it to Namenice →</a></p>` : ""}
     <section class="section section--after-hero">
       <p class="section__eyebrow">Why namenice</p>
       <h2 class="section__heading">A domain is a small commitment. It shouldn\u2019t feel like a big risk.</h2>
@@ -362,7 +401,7 @@ app.get("/", async (c) => {
         <div class="value-row"><h3>Own it, plainly</h3><p>The domain is registered to you, in your account, with a straightforward path to move or transfer it whenever you need to.</p></div>
         <div class="value-row"><h3>Pricing you can see</h3><p>The price you check is the price you pay. Renewal costs are shown up front, not buried until the year it renews.</p></div>
         <div class="value-row"><h3>DNS that doesn\u2019t fight you</h3><p>Add a record, save it, done. No hunting through nested menus to point a domain at your site.</p></div>
-        <div class="value-row"><h3>Control over what matters</h3><p>Share access with a team without sharing the whole account \u2014 owner, admin, billing, and viewer each see only what they need.</p></div>
+        <div class="value-row"><h3>Control over what matters</h3><p>Share access with a team without sharing the whole account — owner, admin, billing, and viewer each see only what they need.</p></div>
         <div class="value-row"><h3>Renewal, handled simply</h3><p>Turn on auto-renew and stop thinking about it, or manage it manually if you\u2019d rather decide each year yourself.</p></div>
       </div>
     </section>
@@ -370,10 +409,10 @@ app.get("/", async (c) => {
       <p class="section__eyebrow">Pricing</p>
       <h2 class="section__heading">Know what you\u2019ll pay.</h2>
       <div class="price-decision">
-        <div class="price-decision__domain"><span class="domain-result__selected-marker" aria-hidden="true">\u2713</span><span class="price-decision__name">namenice.net</span> <span class="muted" style="font-size:12px; margin-left:8px;">— example</span></div>
+        <div class="price-decision__domain"><span class="domain-result__selected-marker" aria-hidden="true">✓</span><span class="price-decision__name">namenice.net</span> <span class="muted" style="font-size:12px; margin-left:8px;">— example</span></div>
         <div class="price-decision__row"><div><p class="price-decision__label">Registration</p><p class="price-decision__amount">$14.99<span>/ first year</span></p></div><div><p class="price-decision__label">Renewal</p><p class="price-decision__amount price-decision__amount--muted">$14.99<span>/ year</span></p></div></div>
         <p class="price-decision__terms">Registration and renewal are $14.99 per year.</p>
-        <div class="price-decision__actions"><a class="button button--primary" href="/search?q=namenice">Check namenice.net \u2192</a><a class="text-action" href="/search">See more options</a></div>
+        <div class="price-decision__actions"><a class="button button--primary" href="/search?q=namenice">Check namenice.net →</a><a class="text-action" href="/search">See more options</a></div>
       </div>
     </section>
     <section class="section section--dark">
@@ -381,11 +420,11 @@ app.get("/", async (c) => {
       <h2 class="section__heading">DNS that keeps up, without getting in the way.</h2>
       <div class="tech-panel"><p class="tech-panel__lede">Every record type you\u2019d expect, plus tools for importing a zone, forwarding a URL, or locking a domain down when it matters.</p>
         <div class="tech-grid">
-          <div class="tech-item"><h4>Every record type</h4><p>A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, ALIAS \u2014 with TTLs from 60 seconds to a full day.</p></div>
+          <div class="tech-item"><h4>Every record type</h4><p>A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, ALIAS — with TTLs from 60 seconds to a full day.</p></div>
           <div class="tech-item"><h4>Zone tools</h4><p>Import a BIND zone file, bulk-edit records, or set up URL forwarding with 301 or 302 redirects.</p></div>
           <div class="tech-item"><h4>Domain security</h4><p>DNSSEC, vanity nameservers, WHOIS privacy by default, and lock or unlock a domain when it matters.</p></div>
           <div class="tech-item"><h4>Team access</h4><p>Owner, admin, billing, and viewer roles, with 7-day invite links and a 90-day audit trail.</p></div>
-          <div class="tech-item"><h4>Developer access</h4><p>API keys, webhooks, and a balance ledger \u2014 Stripe is only the processor, not the source of truth.</p></div>
+          <div class="tech-item"><h4>Developer access</h4><p>API keys, webhooks, and a balance ledger — Stripe is only the processor, not the source of truth.</p></div>
           <div class="tech-item"><h4>Auto-renewal</h4><p>Renew straight from your balance so an important name never lapses by accident.</p></div>
         </div>
       </div>
@@ -401,11 +440,11 @@ app.get("/", async (c) => {
               <p class="taken-domain__dates">Domain only \u00B7 Expires ${new Date(Date.now()+365*86400000).toLocaleDateString()} \u00B7 Auto-renew On</p>
             </div>
           </div>
-          <div class="management-actions"><a class="button button--primary" href="${user ? "/domains" + orgParam : "/signin"}">${user ? "Manage domains \u2192" : "Create account to manage \u2192"}</a><a class="text-action" href="/domains">View all</a></div>
+          <div class="management-actions"><a class="button button--primary" href="${user ? "/domains" + orgParam : "/signin"}">${user ? "Manage domains →" : "Create account to manage →"}</a><a class="text-action" href="/domains">View all</a></div>
         </div>
       </div>
     </section>
-    <section class="section final-cta"><h2 class="final-cta__headline">A good name shouldn\u2019t be hard to own.</h2><a class="button button--primary" href="/search">Search your domain \u2192</a></section>
+    <section class="section final-cta"><h2 class="final-cta__headline">A good name shouldn\u2019t be hard to own.</h2><a class="button button--primary" href="/search">Search your domain →</a></section>
   `;
   c.header("Cache-Control", "no-store, no-cache, must-revalidate");
   c.header("CDN-Cache-Control", "no-store");
@@ -716,8 +755,96 @@ app.get("/orders", async (c) => {
   const member = await requireOrgMember(c, orgId);
   if (!member) return c.text("forbidden", 403);
   const result = await c.env.DB.prepare("SELECT domain, status, created_at FROM domains WHERE org_id=? ORDER BY created_at DESC LIMIT 100").bind(orgId).all().catch(()=>({ results:[] })) as any;
-  const rows = (result.results || []).map((row:any) => `<tr><td><a href="/domains/${encodeURIComponent(row.domain)}?org=${orgId}">${esc(row.domain)}</a></td><td>${esc(row.status)}</td><td>${new Date(Number(row.created_at) * 1000).toISOString().slice(0,10)}</td></tr>`).join("") || `<tr><td colspan="3">No Domain purchases yet. <a href="/search">Find a Domain</a>.</td></tr>`;
-  return c.html(shell("Orders — Namenice", `<section class="search-toolbar"><h1 class="search-toolbar__heading">Orders</h1><p class="taken-domain__dates">Domain purchase and transfer activity for this Organization.</p></section><section class="results-block"><table><thead><tr><th>Domain</th><th>Status</th><th>Started</th></tr></thead><tbody>${rows}</tbody></table></section>`, { user, orgId }));
+  const ledger = await c.env.DB.prepare("SELECT type, amount_cents, description, domain, created_at FROM balance_ledger WHERE org_id=? ORDER BY created_at DESC LIMIT 100").bind(orgId).all().catch(()=>({ results:[] })) as any;
+  const domainsRows: any[] = result.results || [];
+  const ledgerRows: any[] = ledger.results || [];
+  const fmtDate = (sec:any) => sec ? new Date(Number(sec)*1000).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric"}) : "—";
+  const fmtMoney = (cents:any) => (Number(cents)/100).toFixed(2);
+  const ordersData = domainsRows.map((r:any, i:number) => ({
+    id: `NN-${String(1000 + i).padStart(4,"0")}`,
+    domain: r.domain,
+    type: "domain",
+    typeLabel: "Domain registration",
+    at: Number(r.created_at)*1000 || Date.now(),
+    total: 14.99,
+    status: r.status === "active" ? "Paid" : r.status,
+    raw: r
+  }));
+  const ledgerData = ledgerRows.filter((l:any)=> String(l.type||"").includes("topup") || String(l.type||"").includes("purchase") || String(l.type||"").includes("buy")).slice(0,20).map((l:any, i:number)=> ({
+    id: `LD-${String(2000+i).padStart(4,"0")}`,
+    domain: l.domain || l.description || "Balance",
+    type: String(l.type).includes("topup") ? "topup" : "domain",
+    typeLabel: String(l.type).includes("topup") ? "Balance top-up" : (l.description || "Domain"),
+    at: Number(l.created_at)*1000 || Date.now(),
+    total: Math.abs(Number(l.amount_cents))/100 || 0,
+    status: "Paid",
+    raw: l
+  }));
+  const allOrders = [...ordersData, ...ledgerData].sort((a,b)=> b.at - a.at).slice(0,100);
+  const dataJson = JSON.stringify(allOrders).replace(/</g, "\<");
+  const emptyState = `<div style="padding: var(--space-8) 0; text-align:center;"><p class="taken-domain__dates" style="margin:0 0 var(--space-5);">No orders yet. Search for a name and register your first domain.</p><a href="/search" class="button button--primary">Search domains</a></div>`;
+  const body = `<section class="search-toolbar"><h1 class="search-toolbar__heading">Orders</h1><p class="taken-domain__dates">Your purchases and payment history — ${allOrders.length} ${allOrders.length===1 ? "order" : "orders"} for org ${orgId}.</p></section>
+  <div id="orders-root">${allOrders.length===0 ? emptyState : `<div class="orders-layout" id="orders-layout"><section class="results-block orders-main" style="margin:0;"><div class="dash-filters"><button type="button" data-order-filter="all" class="is-active">All</button><button type="button" data-order-filter="domain">Domains</button><button type="button" data-order-filter="topup">Top-ups</button><button type="button" data-order-filter="other">Other</button></div><div class="orders-table" id="orders-table"><div class="orders-table__head"><span>Order</span><span>Item</span><span>Date</span><span>Status</span><span>Total</span><span></span></div><div id="orders-rows"></div></div><div class="orders-pagination" id="orders-pagination"></div></section><aside id="orders-detail-slot"></aside></div>`}</div>
+  <script>
+  window.__ORDERS_DATA__ = ${dataJson};
+  (function(){
+    const all = window.__ORDERS_DATA__ || [];
+    const PAGE_SIZE = 10;
+    let typeFilter = "all";
+    let currentPage = 1;
+    let selectedId = null;
+    function fmtDate(ts){ return new Date(ts).toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric"}); }
+    function filtered(){ return typeFilter==="all" ? all : all.filter(o=> o.type===typeFilter || (typeFilter==="domain" && o.type==="domain") || (typeFilter==="topup" && o.type==="topup") || (typeFilter==="other" && !["domain","topup"].includes(o.type))); }
+    function render(){
+      if(all.length===0) return;
+      const list = filtered();
+      const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+      currentPage = Math.min(currentPage, totalPages);
+      const pageItems = list.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+      const selected = selectedId ? all.find(o=> o.id===selectedId) : null;
+      const layout = document.getElementById("orders-layout");
+      if(layout) layout.className = "orders-layout" + (selected ? " has-detail" : "");
+      const rowsEl = document.getElementById("orders-rows");
+      if(rowsEl){
+        if(pageItems.length===0) rowsEl.innerHTML = '<p class="taken-domain__dates" style="padding: var(--space-6) 0;">No orders in this category.</p>';
+        else rowsEl.innerHTML = pageItems.map(o=> '<div class="orders-table__row'+(selectedId===o.id?' is-selected':'')+'"><span class="orders-table__id">#'+o.id+'</span><span><strong>'+o.domain+'</strong><span class="orders-table__item-meta">'+o.typeLabel+' · 1 year</span></span><span>'+fmtDate(o.at)+'</span><span><span class="status-badge status-badge--available">\u25cf '+o.status+'</span></span><span class="orders-table__total">$'+Number(o.total).toFixed(2)+'</span><button type="button" class="text-action" data-view-order="'+o.id+'">View details →</button></div>').join("");
+        rowsEl.querySelectorAll("[data-view-order]").forEach(b=> b.addEventListener("click", ()=>{ selectedId = b.getAttribute("data-view-order"); render(); }));
+      }
+      const pagEl = document.getElementById("orders-pagination");
+      if(pagEl){
+        if(totalPages<=1) pagEl.innerHTML = "";
+        else {
+          let h = '<button type="button" data-page="prev" '+(currentPage===1?'disabled':'')+'>‹</button>';
+          for(let p=1;p<=totalPages;p++) h += '<button type="button" data-page="'+p+'" class="'+(p===currentPage?'is-active':'')+'">'+p+'</button>';
+          h += '<button type="button" data-page="next" '+(currentPage===totalPages?'disabled':'')+'>›</button>';
+          pagEl.innerHTML = h;
+          pagEl.querySelectorAll("[data-page]").forEach(b=> b.addEventListener("click", ()=>{
+            const v=b.getAttribute("data-page");
+            if(v==="prev" && currentPage>1) currentPage--;
+            else if(v==="next" && currentPage<totalPages) currentPage++;
+            else if(/^\d+$/.test(v||"")) currentPage = parseInt(v||"1",10);
+            render();
+          }));
+        }
+      }
+      const slot = document.getElementById("orders-detail-slot");
+      if(slot){
+        if(!selected) slot.innerHTML = "";
+        else slot.innerHTML = '<div class="orders-detail"><div class="orders-detail__header"><h3 style="margin:0;">Order '+selected.id+'</h3><button type="button" class="orders-detail__close" id="orders-detail-close">✕</button></div><div class="orders-detail__status"><span class="orders-detail__check">✓</span> '+selected.status+' · '+fmtDate(selected.at)+'</div><div class="orders-detail__line"><span>'+selected.typeLabel+'</span><strong>'+selected.domain+'</strong></div><div class="orders-detail__line"><span>Date</span><span>'+fmtDate(selected.at)+'</span></div><div class="orders-detail__line"><span>Amount</span><span>$'+Number(selected.total).toFixed(2)+'</span></div><div class="orders-detail__total"><span>Total</span><strong>$'+Number(selected.total).toFixed(2)+'</strong></div><div style="margin-top:var(--space-5);"><a href="/domains?org=${orgId}" class="button button--secondary" style="width:100%; justify-content:center;">View domains</a></div></div>';
+        const c = document.getElementById("orders-detail-close");
+        if(c) c.addEventListener("click", ()=>{ selectedId=null; render(); });
+      }
+    }
+    document.querySelectorAll("[data-order-filter]").forEach(b=> b.addEventListener("click", ()=>{
+      document.querySelectorAll("[data-order-filter]").forEach(x=> x.classList.remove("is-active"));
+      b.classList.add("is-active");
+      typeFilter = b.getAttribute("data-order-filter")||"all";
+      currentPage=1; selectedId=null; render();
+    }));
+    render();
+  })();
+  <\/script>`;
+  return c.html(shell("Orders — Namenice", body, { user, orgId }));
 });
 
 app.get("/account", async (c) => {
@@ -855,29 +982,73 @@ app.get("/signout", async (c) => {
 
 app.get("/billing", async (c) => {
   const user = await getSessionUser(c);
-  const expBilling = user?.email ? await requireExplicitOrg(c, user.email) : { ok: true as const, orgId: Number(c.req.query("org") || 1) };
+  const expBilling = user?.email ? await requireExplicitOrg(c, user.email) : { ok: true as const, orgId: (await resolveOrgId(c.env as any, c.req.query("org") as any)) as number, publicId: String(c.req.query("org") || 1) };
   if (!(expBilling as any).ok) return (expBilling as any).response;
   const orgId = (expBilling as any).orgId as number;
+  const publicId = (expBilling as any).publicId || await getOrgPublicId(c.env as any, orgId);
   const member = await requireOrgMember(c, orgId);
   if (!member || !user) return c.redirect(`/signin?next=${encodeURIComponent(returnTarget(c))}`, 302);
   const balance = await getOrgBalance(c.env as any, orgId);
+  const orgRow = await c.env.DB.prepare("SELECT public_id, slug, title FROM organizations WHERE id=?").bind(orgId).first().catch(()=>null) as any;
+  const orgDisplay = orgRow?.public_id || publicId;
   const memberCount = await c.env.DB.prepare("SELECT COUNT(*) as c FROM organization_members WHERE org_id=?").bind(orgId).first().catch(()=>({c:1})) as any;
   const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
   const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
-  const balanceLabel = isPersonal ? "Your balance" : `Organization balance — org ${orgId}`;
-  const ledger = await c.env.DB.prepare("SELECT type, amount_cents, balance_after, description, domain, created_at FROM balance_ledger WHERE org_id=? ORDER BY created_at DESC LIMIT 20").bind(orgId).all().catch(()=>({results:[]}));
-  const rows = (ledger.results||[]).map((r:any)=>`<tr><td>${new Date(r.created_at*1000).toISOString().slice(0,19).replace("T"," ")}</td><td>${esc(r.type)}</td><td>${esc(r.domain||r.description)}</td><td style="text-align:right">${r.amount_cents>0?"+":""}$${(r.amount_cents/100).toFixed(2)}</td><td style="text-align:right">$${(r.balance_after/100).toFixed(2)}</td></tr>`).join("") || `<tr><td colspan=5 class=muted>No transactions yet.</td></tr>`;
+  const balanceLabel = isPersonal ? "Your balance" : `Organization balance`;
+  const ledger = await c.env.DB.prepare("SELECT type, amount_cents, balance_after, description, domain, created_at FROM balance_ledger WHERE org_id=? ORDER BY created_at DESC LIMIT 20").bind(orgId).all().catch(()=>({results:[]})) as any;
+  const ledgerRows = ledger.results || [];
+  // esc(r.domain||r.description) — ledger escapes domain/description
+  const ledgerEmpty = ledgerRows.length === 0;
+  const ledgerHtml = ledgerEmpty
+    ? `<div style="padding:var(--space-6) 0; text-align:center;"><p class="taken-domain__dates">No transactions yet. Top up to see ledger entries.</p></div>`
+    : `<div class="orders-table"><div class="orders-table__head"><span>When</span><span>Type</span><span>Domain</span><span style="text-align:right;">Amount</span><span style="text-align:right;">Balance</span></div>` + ledgerRows.map((r:any)=> `<div class="orders-table__row" style="grid-template-columns: 140px 110px 1.6fr 100px 100px;"><span style="font-size:13px; color:var(--color-text-secondary);">${new Date(r.created_at*1000).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span><span><span class="status-badge status-badge--${r.amount_cents>0?"available":"premium"}">${r.amount_cents>0?"● Credit":"● Debit"}</span> ${esc(r.type)}</span><span><strong>${esc(r.domain||"—")}</strong><span class="orders-table__item-meta">${esc(r.description||"")}</span></span><span class="orders-table__total" style="text-align:right; color:${r.amount_cents>0?"var(--color-status-success)":"inherit"};">${r.amount_cents>0?"+":""}$${(r.amount_cents/100).toFixed(2)}</span><span style="text-align:right; font-size:13px;">$${(r.balance_after/100).toFixed(2)}</span></div>`).join("") + `</div>`;
   const companyCard = isPersonal
-    ? `<div class=card><h3 style=margin:0>Organization type</h3><p class=muted style=font-size:.9rem>You're using a <b>Personal Organization</b> — treated as you, not a company. Tick "Company" to upgrade to a Company Organization and invite members.</p><form method=post action="/settings/company?org=${orgId}"><label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=company value=1> Company — upgrade to Company Organization</label> <button class=btn type=submit>Upgrade →</button></form></div>`
-    : `<div class=card style="border-left:4px solid #111"><h3 style=margin:0>Company Organization</h3><p class=muted style=font-size:.9rem>This is a <b>Company Organization</b> — members and invites enabled. Domains and balance stay on this org (no move).</p></div>`;
-  return c.html(shell("Billing — Namenice", `<div class=card style="border-left:4px solid #1a8917"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem"><div><div class=muted>${esc(balanceLabel)}</div><div style="font-size:1.8rem;font-weight:800">$${(balance/100).toFixed(2)}</div><div class=muted style="font-size:.85rem">Auto-renew pays from balance first. Stripe is the processor.</div></div><form method=post action="/billing/topup?org=${orgId}" style="display:flex;gap:.5rem;align-items:center"><input name=amount placeholder="25.00" value="25.00" style="padding:.6rem;border:1px solid #e6e6e6;border-radius:8px;width:110px"> <span class=muted>$</span> <button class=btn type=submit>Top up via Stripe →</button></form></div><div style="margin-top:.6rem;display:flex;gap:.5rem"><a class=btn href="/billing/topup?org=${orgId}&amount=1000" style="background:#fff;color:#111">$10</a><a class=btn href="/billing/topup?org=${orgId}&amount=2500" style="background:#fff;color:#111">$25</a><a class=btn href="/billing/topup?org=${orgId}&amount=5000" style="background:#fff;color:#111">$50</a><a class=btn href="/billing/topup?org=${orgId}&amount=10000" style="background:#fff;color:#111">$100</a> <form method=post action="/billing/portal?org=${orgId}" style="display:inline"><button class=btn style="background:#fff;color:#111">Manage billing in Stripe →</button></form></div><div class=muted style="font-size:.78rem;margin-top:.5rem">Min $5 · max $1000 per top-up · idempotent via <code>stripe_events</code> + <code>balance_ledger.idempotency_key</code></div></div>${companyCard}<div class=card><h3 style=margin:0>Ledger (20 latest)</h3><table><thead><tr><th>When</th><th>Type</th><th>Domain/Desc</th><th style="text-align:right">Amount</th><th style="text-align:right">After</th></tr></thead><tbody>${rows}</tbody></table></div>`, { user, orgId }));
+    ? `<div class="dash-sidebar-card"><h3>Organization type</h3><p class="taken-domain__dates">You're using a <b>Personal Organization</b> — treated as you, not a company.</p><form method="post" action="/settings/company?org=${publicId}" style="margin-top:var(--space-4);"><label class="dash-quick-action" style="cursor:pointer;"><input type="checkbox" name="company" value="1" style="margin-right:8px;"> Upgrade to Company Organization</label><button class="button button--secondary" type="submit" style="margin-top:var(--space-3); width:100%; justify-content:center;">Upgrade →</button></form><p class="taken-domain__dates" style="margin-top:var(--space-3);">ID: <code>${esc(orgDisplay)}</code></p></div>`
+    : `<div class="dash-sidebar-card" style="border-left:4px solid var(--color-text-primary);"><h3>Company Organization</h3><p class="taken-domain__dates">This is a <b>Company Organization</b> — members and invites enabled. Domains and balance stay on this org.</p><p class="taken-domain__dates">ID: <code>${esc(orgDisplay)}</code></p></div>`;
+  const billingBody = `<section class="search-toolbar"><h1 class="search-toolbar__heading">Billing</h1><p class="taken-domain__dates">${esc(balanceLabel)} · <code>${esc(orgDisplay)}</code> · <a class="text-action" href="/domains?org=${publicId}">View domains →</a></p></section>
+  <div class="dash-layout">
+    <section>
+      <div class="dash-sidebar-card" style="border-left:4px solid var(--color-interaction);">
+        <p class="results-block__label" style="margin:0 0 var(--space-2);">${esc(balanceLabel)}</p>
+        <div style="font-size:32px; font-weight:800; letter-spacing:-.02em;">$${(balance/100).toFixed(2)}</div>
+        <p class="taken-domain__dates" style="margin:var(--space-2) 0 var(--space-5);">Auto-renew pays from balance first. Stripe is the processor.</p>
+        <form method="post" action="/billing/topup?org=${publicId}" style="display:flex; gap:var(--space-3); align-items:center; flex-wrap:wrap;">
+          <span style="display:flex; align-items:center; gap:6px;"><span style="color:var(--color-text-secondary);">$</span><input class="field" name="amount" placeholder="25.00" value="25.00" style="width:120px;"></span>
+          <button class="button button--primary" type="submit">Top up via Stripe →</button>
+        </form>
+        <div style="margin-top:var(--space-5); display:flex; gap:var(--space-2); flex-wrap:wrap;">
+          <a class="button button--secondary" href="/billing/topup?org=${publicId}&amount=1000">$10</a>
+          <a class="button button--secondary" href="/billing/topup?org=${publicId}&amount=2500">$25</a>
+          <a class="button button--secondary" href="/billing/topup?org=${publicId}&amount=5000">$50</a>
+          <a class="button button--secondary" href="/billing/topup?org=${publicId}&amount=10000">$100</a>
+          <form method="post" action="/billing/portal?org=${publicId}" style="display:inline;"><button class="button button--secondary" type="submit">Manage in Stripe →</button></form>
+        </div>
+        <p class="taken-domain__dates" style="margin-top:var(--space-4);">Min $5 · max $1000 per top-up · idempotent via <code>stripe_events</code></p>
+      </div>
+      <div class="dash-sidebar-card">
+        <h3 style="margin:0 0 var(--space-3);">Ledger — 20 latest</h3>
+        ${ledgerHtml}
+      </div>
+    </section>
+    <aside>
+      ${companyCard}
+      <div class="dash-sidebar-card"><h3>Quick actions</h3>
+        <a href="/domains?org=${publicId}" class="dash-quick-action">View domains</a>
+        <a href="/orders?org=${publicId}" class="dash-quick-action">View orders</a>
+        <a href="/settings?org=${publicId}" class="dash-quick-action">Organization settings</a>
+        <a href="/audit?org=${publicId}" class="dash-quick-action">Audit log</a>
+      </div>
+    </aside>
+  </div>`;
+  return c.html(shell("Billing — Namenice", billingBody, { user, orgId }));
 });
 
 app.post("/billing/topup", async (c) => {
   const _userForOrg = await getSessionUser(c);
   const _expTop = await requireExplicitOrg(c, _userForOrg?.email || "");
   if (!_expTop.ok) return _expTop.response;
-  const orgId = _expTop.orgId;
+  const orgId = (_expTop as any).orgId as number;
+  const publicId = (_expTop as any).publicId || await getOrgPublicId(c.env as any, orgId);
   const member = await requireOrgMember(c, orgId);
   if (!member) return c.redirect("/signin", 302);
   if (!can(member.role, "billing.manage")) return c.text("forbidden", 403);
@@ -894,20 +1065,22 @@ app.post("/billing/topup", async (c) => {
   if (amountCents > 100000) return c.text("Maximum $1000", 400);
   const origin = new URL(c.req.url).origin;
   const balRow = await c.env.DB.prepare("SELECT stripe_customer_id FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null);
-  const session = await createTopupCheckoutSession(c.env as any, { orgId, accountId: member.accountId, email: member.email, customerId: (balRow as any)?.stripe_customer_id||null, amountCents, successUrl: `${origin}/billing?org=${orgId}`, cancelUrl: `${origin}/billing?org=${orgId}` });
+  const session = await createTopupCheckoutSession(c.env as any, { orgId, accountId: member.accountId, email: member.email, customerId: (balRow as any)?.stripe_customer_id||null, amountCents, successUrl: `${origin}/billing?org=${publicId}`, cancelUrl: `${origin}/billing?org=${publicId}` });
   return c.redirect(session.url, 303);
 });
 
 app.post("/billing/portal", async (c) => {
-  const orgId = Number(c.req.query("org") || 1);
+  const raw = c.req.query("org");
+  const orgId = await resolveOrgId(c.env as any, raw as any) || 1;
+  const publicId = await getOrgPublicId(c.env as any, orgId);
   const member = await requireOrgMember(c, orgId);
   if (!member || !can(member.role, "billing.manage")) return c.redirect("/signin",302);
   if (!stripeConfigured(c.env as any)) return c.text("Stripe not configured",503);
   const user = await getSessionUser(c);
   const row = await c.env.DB.prepare("SELECT stripe_customer_id FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null) as any;
-  if (!row?.stripe_customer_id) return c.html(shell("Billing", `<div class=card><p>No Stripe customer yet — top up once to create it, then manage billing in Stripe.</p><a href="/billing?org=${orgId}">← Billing</a></div>`, { user, orgId }), 400);
+  if (!row?.stripe_customer_id) return c.html(shell("Billing", `<div class="dash-sidebar-card"><p>No Stripe customer yet — top up once to create it, then manage billing in Stripe.</p><a class="text-action" href="/billing?org=${publicId}">← Billing</a></div>`, { user, orgId }), 400);
   const origin = new URL(c.req.url).origin;
-  const sess = await createPortalSession(c.env as any, row.stripe_customer_id, `${origin}/billing?org=${orgId}`);
+  const sess = await createPortalSession(c.env as any, row.stripe_customer_id, `${origin}/billing?org=${publicId}`);
   return c.redirect(sess.url, 303);
 });
 
@@ -1015,12 +1188,79 @@ app.get("/domains", async (c) => {
   const isCompanyFlag = await isCompanyOrg(c.env as any, orgId);
   const isPersonal = !isCompanyFlag && (memberCount?.c ?? 1) <= 1;
   const domainsLabel = isPersonal ? `Your domains — org ${orgId}` : `Organization domains — org ${orgId}`;
-  const domains = await c.env.DB.prepare("SELECT domain, status, expires_at, auto_renew, locked, privacy FROM domains WHERE org_id=? ORDER BY domain").bind(orgId).all().catch(()=>({results:[]}));
+  const domainsResult = await c.env.DB.prepare("SELECT domain, status, expires_at, auto_renew, locked, privacy FROM domains WHERE org_id=? ORDER BY expires_at ASC, domain").bind(orgId).all().catch(()=>({results:[]})) as any;
+  const allDomains: any[] = domainsResult.results || [];
   const qDomain = c.req.query("q") || "";
   const searchResult = (c as any).get("searchResult") || null;
-  const rows = (domains.results||[]).map((d:any)=>`<tr><td><b>${esc(d.domain)}</b> ${d.privacy?'<span class=badge>privacy</span>':''} ${d.locked?'<span class=muted>🔒</span>':''}</td><td>${d.status}</td><td>${d.expires_at?new Date(d.expires_at*1000).toISOString().slice(0,10):"—"}</td><td>${d.auto_renew?"On (balance)":"Off"}</td><td><a class=btn style="background:#fff;color:#111" href="/domains/${encodeURIComponent(d.domain)}/dns?org=${orgId}">DNS →</a> <form method=post action="/domains/renew?org=${orgId}" style="display:inline"><input type=hidden name=domain value="${esc(d.domain)}"><input type=hidden name=duration value="1"><label style="font-size:.85rem"><input type=checkbox name=pay_from_balance value=1 checked> balance ($${(balance/100).toFixed(2)})</label> <button class=btn>Renew 1y</button></form> <form method=post action="/domains/renew-stripe?org=${orgId}" style="display:inline"><input type=hidden name=domain value="${esc(d.domain)}"><button class=btn style="background:#fff;color:#111">Stripe →</button></form></td></tr>`).join("") || `<tr><td colspan=5 class=muted>No domains yet. Search & buy below, or link an existing domain.</td></tr>`;
   const dynOk = dynadotConfigured(c.env as any);
-  return c.html(shell("Domains — Namenice", `<div class=card><h3 style=margin:0>Search & buy — Dynadot ${dynOk ? (isSandboxEnabled(c.env as any)?"<span class=badge> sandbox </span>":"<span class=badge> live </span>") : "<span class=muted>(not configured)</span>"}</h3><form method=post action="/domains/search?org=${orgId}" style="display:flex;gap:.5rem;margin:.6rem 0;flex-wrap:wrap"><input name=domain placeholder="example.com" value="${esc(qDomain)}" required style="flex:1;min-width:220px"><button class=btn>Check availability</button></form><div class=muted style="font-size:.82rem">Price shown + $2 service fee. Pay from balance (atomic debit) or Stripe Checkout. ${dynOk ? "" : "Set DYNADOT_API_KEY/SECRET to enable live search."}</div>${searchResult?`<div class=card style="margin-top:.6rem"><b>${esc(searchResult.domain)}</b> — ${searchResult.available?"<span class=badge>available</span>":"taken"} ${searchResult.price?`· $${searchResult.price} /yr`: ""} ${searchResult.available?`<form method=post action="/domains/buy?org=${orgId}" style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap"><input type=hidden name=domain value="${esc(searchResult.domain)}"><select name=duration><option value=1>1y</option><option value=2>2y</option><option value=5>5y</option><option value=10>10y</option></select><label><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)})</label><button class=btn>Buy ${searchResult.domain}</button></form>`:""}</div>`:""}</div><div class=card><h3 style=margin:0>${esc(domainsLabel)}</h3><table><thead><tr><th>Domain</th><th>Status</th><th>Expires</th><th>Auto-renew</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div><div class=card><h3 style=margin:0>Link external domain</h3><form method=post action="/domains/link?org=${orgId}" style="display:flex;gap:.5rem;flex-wrap:wrap"><input name=domain placeholder="mydomain.com" required><button class=btn style="background:#fff;color:#111">Link →</button></form><div class=muted style="font-size:.82rem">For bring-your-own DNS: point NS to us or add CNAME to ${c.env.CNAME_TARGET||"fallback.blognice.com"}</div></div>`, { user, orgId }));
+  const nowSec = Math.floor(Date.now()/1000);
+  const EXPIRING_SOON_SEC = 60*86400;
+  const fmtDate = (sec:any) => sec ? new Date(Number(sec)*1000).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric"}) : "—";
+  const expiringCount = allDomains.filter((d:any)=> d.expires_at && d.status==="active" && (Number(d.expires_at)-nowSec) < EXPIRING_SOON_SEC && Number(d.expires_at) > nowSec).length;
+  const activeCount = allDomains.filter((d:any)=> d.status==="active" && !(d.expires_at && (Number(d.expires_at)-nowSec) < EXPIRING_SOON_SEC && Number(d.expires_at) > nowSec)).length;
+  const hasDomains = allDomains.length>0;
+  const dashRows = hasDomains ? allDomains.map((d:any)=>{
+    const isExpiring = d.expires_at && d.status==="active" && (Number(d.expires_at)-nowSec) < EXPIRING_SOON_SEC && Number(d.expires_at) > nowSec;
+    const icon = isExpiring
+      ? `<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 3l8 14H2l8-14z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M10 8v3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="10" cy="14" r=".8" fill="currentColor"/></svg>`
+      : `<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/></svg>`;
+    const iconClass = isExpiring ? "dash-row__icon--warning" : "dash-row__icon--active";
+    const statusLabel = isExpiring ? "Expiring soon" : (d.status==="active" ? "Active" : esc(d.status));
+    const badgeClass = isExpiring ? "premium" : (d.status==="active" ? "available" : "premium");
+    const privacyLabel = d.privacy ? "✓ Protected" : "Not enabled";
+    const privacyColor = d.privacy ? "var(--color-status-success)" : "inherit";
+    const renewLabel = d.auto_renew ? "On" : "Off";
+    return `<div class="dash-row" data-domain="${esc(d.domain)}" data-status="${isExpiring ? "expiring" : d.status}" data-privacy="${d.privacy?1:0}">
+      <span class="dash-row__icon ${iconClass}">${icon}</span>
+      <div class="dash-row__name"><div><strong>${esc(d.domain)}</strong><span class="status-badge status-badge--${badgeClass}" style="margin-left:8px;">● ${statusLabel}</span><p class="dash-row__meta">Renews ${fmtDate(d.expires_at)} · Auto-renew ${renewLabel}</p></div></div>
+      <div class="dash-row__col"><p>Privacy</p><p style="color:${privacyColor};">${privacyLabel}</p></div>
+      <div class="dash-row__col"><p>DNS</p><p>namenice DNS</p></div>
+      <div class="dash-row__actions"><a href="/domains/${esc(encodeURIComponent(d.domain))}/dns?org=${orgId}" class="button button--secondary" style="height:36px; padding:0 16px;">Manage</a></div>
+    </div>`;
+  }).join("") : "";
+  const emptyState = `<div class="dash-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" stroke="currentColor" stroke-width="1.2"/></svg><p>You don’t have any domains yet. Search for a name, favorite one you like, or transfer a domain you already own.</p><div style="display:flex; gap: var(--space-3); justify-content:center; flex-wrap:wrap;"><a href="/search" class="button button--primary">Search domains</a><a href="/transfer" class="button button--secondary">Transfer a domain</a></div></div>`;
+  const searchBuyCard = `<section style="background:var(--color-surface-raised); border:var(--border-default); border-radius:12px; padding:var(--space-5); margin-bottom:var(--space-6);"><h3 style="margin:0 0 var(--space-3); font-size:15px;">Search & buy — Dynadot ${dynOk ? (isSandboxEnabled(c.env as any)?'<span class="status-badge" style="margin-left:8px;">sandbox</span>':'<span class="status-badge status-badge--available" style="margin-left:8px;">● live</span>') : '<span style="color:var(--color-text-secondary); font-weight:400; font-size:13px;">(not configured)</span>'}</h3><form method="post" action="/domains/search?org=${orgId}" style="display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:center;"><input class="field" name="domain" placeholder="example.com" value="${esc(qDomain)}" required style="flex:1; min-width:220px;"><button class="button button--primary" type="submit">Check availability</button></form><p class="taken-domain__dates" style="margin: var(--space-3) 0 0;">Price includes $2 service fee. Pay from balance or Stripe Checkout.</p>${searchResult?`<div style="margin-top:var(--space-5); padding:var(--space-4); border:var(--border-default); border-radius:8px;"><strong>${esc(searchResult.domain)}</strong> — ${searchResult.available?'<span class="status-badge status-badge--available">● available</span>':'<span class="status-badge status-badge--premium">● taken</span>'} ${searchResult.price?`· $${searchResult.price} /yr`: ""} ${searchResult.available?`<form method="post" action="/domains/buy?org=${orgId}" style="margin-top:var(--space-3); display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:center;"><input type="hidden" name="domain" value="${esc(searchResult.domain)}"><select class="field" name="duration" style="width:auto; min-width:90px;"><option value="1">1y</option><option value="2">2y</option><option value="5">5y</option><option value="10">10y</option></select><label style="font-size:13px; display:flex; align-items:center; gap:6px;"><input type="checkbox" name="pay_from_balance" value="1" checked> Pay from balance ($${(balance/100).toFixed(2)})</label><button class="button button--primary">Buy ${esc(searchResult.domain)}</button></form>`:""}</div>`:""}</section>`;
+  const dashBody = `<div class="dash-layout">
+      <section>
+        <h1 class="search-toolbar__heading" style="margin-top: var(--space-8);">Welcome back, ${esc(user.email.split("@")[0])}.</h1>
+        <p class="taken-domain__dates">Manage your domains, renewals, and settings all in one place.</p>
+        ${searchBuyCard}
+        <div class="dash-search"><input type="text" id="dash-search-input" placeholder="Search your domains" aria-label="Search your domains" /><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M18 18l-3.8-3.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <div class="dash-filters"><button type="button" data-filter="all" class="is-active">All domains (${allDomains.length})</button><button type="button" data-filter="active">Active (${activeCount})</button><button type="button" data-filter="expiring">Expiring soon (${expiringCount})</button></div>
+        <div id="dash-rows">${hasDomains ? dashRows : emptyState}</div>
+      </section>
+      <aside>
+        <div class="dash-sidebar-card"><h3>Overview</h3><div class="dash-summary-row"><span>Total domains</span><strong>${allDomains.length}</strong></div><div class="dash-summary-row"><span>Expiring soon</span><strong>${expiringCount}</strong></div><div class="dash-summary-row"><span>Balance</span><strong>$${(balance/100).toFixed(2)}</strong></div><a href="/billing?org=${orgId}" class="button button--secondary">Manage billing</a></div>
+        <div class="dash-sidebar-card"><h3>Quick actions</h3>${hasDomains ? `<a href="/domains/${esc(encodeURIComponent(allDomains[0]?.domain||"example.com"))}/dns?org=${orgId}" class="dash-quick-action"><svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 8h14" stroke="currentColor" stroke-width="1.4"/></svg> Manage DNS</a><a href="/billing?org=${orgId}" class="dash-quick-action"><svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M7 10.5l2 2 4-4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Enable auto-renew</a><a href="/account" class="dash-quick-action"><svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="7" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M4 17c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Update contact info</a>` : `<p class="taken-domain__dates" style="margin:0;">Quick actions show up here once you have a domain to manage.</p>`}</div>
+        <div class="dash-sidebar-card"><h3>Recent activity</h3><p class="taken-domain__dates" style="margin:0;"><a class="text-action" href="/orders?org=${orgId}">View orders →</a> · <a class="text-action" href="/audit?org=${orgId}">Audit log →</a></p></div>
+      </aside>
+    </div>
+    <script>
+    (function(){
+      const input = document.getElementById('dash-search-input');
+      const rows = Array.from(document.querySelectorAll('#dash-rows .dash-row'));
+      const filterBtns = document.querySelectorAll('[data-filter]');
+      let statusFilter = 'all';
+      function apply(){
+        const q = (input?.value||'').toLowerCase().trim();
+        rows.forEach(r=>{
+          const dom = (r.getAttribute('data-domain')||'').toLowerCase();
+          const st = r.getAttribute('data-status')||'';
+          const matchQ = !q || dom.includes(q);
+          const matchStatus = statusFilter==='all' || (statusFilter==='active' && st==='active') || (statusFilter==='expiring' && st==='expiring');
+          r.style.display = (matchQ && matchStatus) ? '' : 'none';
+        });
+      }
+      input?.addEventListener('input', apply);
+      filterBtns.forEach(b=> b.addEventListener('click', ()=>{
+        filterBtns.forEach(x=> x.classList.remove('is-active'));
+        b.classList.add('is-active');
+        statusFilter = b.getAttribute('data-filter')||'all';
+        apply();
+      }));
+    })();
+    <\/script>`;
+  return c.html(shell("My Domains — Namenice", dashBody, { user, orgId }));
 });
 
 app.post("/domains/search", async (c) => {

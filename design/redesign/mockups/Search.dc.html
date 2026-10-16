@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Search results</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Geist:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F7F7F4}
+a{color:#2F54EB}a:hover{color:#1D3BC4}
+</style>
+</helmet>
+<div style="font-family: Geist, system-ui, sans-serif; color: #111418; background: #F7F7F4; min-height: 100vh">
+<nav style="max-width: 1200px; margin: 0 auto; padding: 16px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px">
+<a href="Main.dc.html" style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 22px; color: #111418; text-decoration: none">namenice<span style="color: #2F54EB">.</span></a>
+<form style="flex: 1 1 360px; display: flex; gap: 6px; padding: 6px; background: #FFFFFF; border: 1px solid #DCDFE6; border-radius: 14px">
+<label for="q2" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Search domains</label>
+<input id="q2" value="sunrise" style="flex: 1; min-width: 0; border: 0; outline: none; padding: 10px 12px; font-family: inherit; font-size: 16px">
+<button type="submit" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #2F54EB; color: #FFFFFF; font-family: inherit; font-weight: 600">Search</button>
+</form>
+<a href="#" style="min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-radius: 999px; background: #111418; color: #FFFFFF; text-decoration: none; font-weight: 500">Cart <span style="background: #C6F36B; color: #111418; border-radius: 999px; padding: 2px 8px; font-size: 13px; font-weight: 600">{{count}}</span></a>
+</nav>
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 24px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+<div style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<section style="background: #FFFFFF; border: 2px solid #2F54EB; border-radius: 20px; padding: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 20px">
+<div style="flex: 1 1 260px">
+<p style="margin: 0 0 8px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #E3F6EA; color: #0F6A3A; font-size: 13px; font-weight: 600"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10l4 4 8-8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>Available — exact match</p>
+<h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 44px; letter-spacing: -0.02em">sunrise.net</h1>
+<p style="margin: 6px 0 0; color: #4A5262">Renews at $14.99/yr · WHOIS privacy included</p>
+</div>
+<div style="text-align: right">
+<p style="margin: 0; font-size: 32px; font-weight: 600">$14.99</p>
+<p style="margin: 0; color: #5B6372; font-size: 14px">first year</p>
+</div>
+<button type="button" onClick="{{toggleMain}}" style="min-height: 52px; padding: 0 26px; border-radius: 14px; border: 0; background: {{mainBg}}; color: {{mainFg}}; font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer">{{mainLabel}}</button>
+</section>
+
+<section style="background: #FFFFFF; border: 1px solid #E4E6EB; border-radius: 20px; overflow: hidden">
+<div style="padding: 18px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #E4E6EB">
+<h2 style="margin: 0; font-size: 18px">Other extensions</h2>
+<div style="display: flex; gap: 6px; flex-wrap: wrap">
+<button type="button" style="min-height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: #111418; color: #FFFFFF; font-family: inherit">All</button>
+<button type="button" style="min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #DCDFE6; background: #FFFFFF; font-family: inherit">Available only</button>
+<button type="button" style="min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #DCDFE6; background: #FFFFFF; font-family: inherit">Under $20</button>
+</div>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+<div style="padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; border-bottom: 1px solid #F0F1F4">
+<div style="flex: 1 1 200px; font-size: 18px; font-weight: 500; color: {{r.nameColor}}">{{r.name}}</div>
+<div style="flex: 0 0 140px; font-size: 14px; color: {{r.statusColor}}">{{r.status}}</div>
+<div style="flex: 0 0 120px; text-align: right"><span style="font-weight: 600">{{r.price}}</span><span style="display: block; font-size: 12px; color: #5B6372">{{r.renew}}</span></div>
+<sc-if value="{{r.avail}}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{r.toggle}}" style="min-width: 110px; min-height: 44px; border-radius: 12px; border: {{r.border}}; background: {{r.bg}}; color: {{r.fg}}; font-family: inherit; font-weight: 600; cursor: pointer">{{r.label}}</button>
+</sc-if>
+<sc-if value="{{r.taken}}" hint-placeholder-val="{{ false }}">
+<a href="#" style="min-width: 110px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-size: 14px">Make offer</a>
+</sc-if>
+</div>
+</sc-for>
+</section>
+
+<section style="background: #FFFFFF; border: 1px solid #E4E6EB; border-radius: 20px; padding: 24px">
+<h2 style="margin: 0 0 4px; font-size: 18px">Ideas like this</h2>
+<p style="margin: 0 0 16px; color: #5B6372; font-size: 14px">All available right now · tap to add</p>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #DCDFE6; background: #FFFFFF; font-family: inherit; font-size: 15px">getsunrise.com <span style="color: #5B6372">$12.99</span></button>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #DCDFE6; background: #FFFFFF; font-family: inherit; font-size: 15px">sunrisehq.io <span style="color: #5B6372">$39</span></button>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #DCDFE6; background: #FFFFFF; font-family: inherit; font-size: 15px">sunrise.studio <span style="color: #5B6372">$24</span></button>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #DCDFE6; background: #FFFFFF; font-family: inherit; font-size: 15px">hellosunrise.net <span style="color: #5B6372">$14.99</span></button>
+</div>
+</section>
+</div>
+
+<aside style="flex: 1 1 300px; background: #FFFFFF; border: 1px solid #E4E6EB; border-radius: 20px; padding: 24px">
+<h2 style="margin: 0 0 16px; font-size: 18px">Your cart</h2>
+<sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; color: #5B6372; line-height: 1.5">Nothing yet. Tap <strong>Add</strong> on any name to keep it here.</p>
+</sc-if>
+<sc-for list="{{cart}}" as="c" hint-placeholder-count="1">
+<div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #F0F1F4"><span>{{c.name}}</span><span style="font-weight: 600">{{c.price}}</span></div>
+</sc-for>
+<sc-if value="{{full}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; justify-content: space-between; margin-top: 16px; font-size: 18px; font-weight: 600"><span>Total</span><span>{{total}}</span></div>
+<a href="Domains.dc.html" style="margin-top: 16px; display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: #2F54EB; color: #FFFFFF; text-decoration: none; font-weight: 600">Checkout</a>
+<p style="margin: 12px 0 0; font-size: 13px; color: #5B6372; text-align: center">Card, Apple Pay or account balance</p>
+</sc-if>
+</aside>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+constructor(p){ super(p); this.state = { cart: { 'sunrise.net': 14.99, 'sunrise.co': 29.99 } }; }
+toggle(name, price){ const c = { ...this.state.cart }; if (c[name]) delete c[name]; else c[name] = price; this.setState({ cart: c }); }
+renderVals() {
+const cart = this.state.cart;
+const data = [
+['sunrise.com', null, 'Taken'], ['sunrise.co', 29.99, 'Available'], ['sunrise.io', 44.00, 'Available'],
+['sunrise.app', 18.00, 'Available'], ['sunrise.org', null, 'Taken'], ['sunrise.dev', 16.00, 'Available']];
+const rows = data.map(([name, price, status]) => {
+const inCart = !!cart[name]; const avail = price != null;
+return { name, status, avail, taken: !avail,
+price: avail ? '$' + price.toFixed(2) : '—', renew: avail ? 'renews same' : '',
+nameColor: avail ? '#111418' : '#8A909C', statusColor: avail ? '#0F6A3A' : '#8A909C',
+label: inCart ? 'Added ✓' : 'Add', bg: inCart ? '#E3F6EA' : '#FFFFFF', fg: inCart ? '#0F6A3A' : '#2F54EB',
+border: inCart ? '1px solid #BDE5CB' : '1px solid #2F54EB', toggle: () => this.toggle(name, price) };
+});
+const mainIn = !!cart['sunrise.net'];
+const items = Object.keys(cart).map(n => ({ name: n, price: '$' + cart[n].toFixed(2) }));
+const total = Object.values(cart).reduce((a, b) => a + b, 0);
+return { rows, cart: items, count: items.length, empty: items.length === 0, full: items.length > 0,
+total: '$' + total.toFixed(2), mainLabel: mainIn ? 'In cart ✓' : 'Add to cart',
+mainBg: mainIn ? '#E3F6EA' : '#2F54EB', mainFg: mainIn ? '#0F6A3A' : '#FFFFFF',
+toggleMain: () => this.toggle('sunrise.net', 14.99) };
+}
+}
+</script>
+</body>
+</html>

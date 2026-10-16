@@ -1,28 +1,42 @@
 :root {
-  --color-surface-primary: #f0f2e9;
-  --color-surface-raised: #fffdf8;
-  --color-surface-dark: #101312;
-  --color-text-primary: #162018;
-  --color-text-secondary: #53615b;
-  --color-border-subtle: #cbd7d1;
-  --color-border-strong: #8d9a92;
-  --color-brand-expression: #e8f34a;
-  --color-brand-expression-surface: #fcfce0; /* restrained lime tint, for selected-state surfaces */
-  --color-action-primary: #ff6b2c;
-  --color-action-primary-hover: #eb6228; /* darkened only enough to keep Ink CTA text >= 4.5:1 */
-  --color-action-primary-pressed: #e35f27; /* darkened only enough to keep Ink CTA text >= 4.5:1 */
-  --color-interaction: #006d62;
-  --color-interaction-hover: #00564d;
-  --color-interaction-surface: #e6efe9; /* light teal tint for interaction/hover surfaces, distinct from brand-expression-surface */
-  --color-status-success: #207a4b;
-  --color-status-success-surface: #e6f3e9;
-  --color-status-warning: #a56100;
-  --color-status-warning-surface: #f7edda;
-  --color-status-error: #b42318;
-  --color-status-error-surface: #f8e7e4;
-  --font-display: "Newsreader", "Noto Serif Thai", Georgia, serif;
-  --font-ui: "IBM Plex Sans", "IBM Plex Sans Thai", Arial, sans-serif;
-  --font-thai-display: "Noto Serif Thai", Georgia, serif;
+  /* surfaces */
+  --color-surface-primary: #F7F7F4;   /* page background (warm off-white) */
+  --color-surface-raised: #FFFFFF;     /* cards, panels, inputs */
+  --color-surface-dark: #111418;      /* dark band, primary nav button */
+  --color-surface-dark-2: #1C2028;    /* card inside dark band */
+  /* text */
+  --color-text-primary: #111418;
+  --color-text-secondary: #4A5262;
+  --color-text-muted: #5B6372;        /* captions; keeps >=4.5:1 on white */
+  --color-text-disabled: #8A909C;     /* taken domains */
+  /* borders */
+  --color-border-subtle: #E4E6EB;
+  --color-border-strong: #DCDFE6;     /* inputs, chips */
+  --color-divider: #F0F1F4;           /* row separators */
+  /* action — ONE accent for every primary action */
+  --color-action-primary: #2F54EB;
+  --color-action-primary-hover: #1D3BC4;
+  --color-action-primary-pressed: #1D3BC4;
+  --color-action-primary-surface: #E9EDFF;
+  /* brand nod — use sparingly (cart count badge, CTA on dark band) */
+  --color-brand-expression: #C6F36B;
+  --color-brand-expression-surface: #E3F6EA; /* selected-state surfaces (green "in cart") */
+  /* interaction aliases — same blue accent, kept so existing CSS keeps working */
+  --color-interaction: #2F54EB;
+  --color-interaction-hover: #1D3BC4;
+  --color-interaction-surface: #E9EDFF;
+  /* status — only for state, never decoration */
+  --color-status-success: #0F6A3A;
+  --color-status-success-surface: #E3F6EA;
+  --color-status-success-border: #BDE5CB;
+  --color-status-warning: #8A4B00;
+  --color-status-warning-surface: #FFF4E5;
+  --color-status-warning-border: #F5D9A8;
+  --color-status-error: #B42318;
+  --color-status-error-surface: #F8E7E4;
+  /* type */
+  --font-display: "Bricolage Grotesque", system-ui, sans-serif; /* weights 500/700 */
+  --font-ui: "Geist", system-ui, sans-serif;                    /* weights 400/500/600 */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -35,11 +49,15 @@
   --space-10: 64px;
   --radius-subtle: 4px;
   --radius-sm: 4px;
-  --radius-control: 8px;
-  --radius-search: 12px;
+  --radius-control: 12px;  /* buttons, inputs */
+  --radius-search: 20px;   /* search panels */
+  --radius-card: 20px;     /* panels */
+  --radius-band: 28px;     /* dark pricing band */
+  --radius-pill: 999px;    /* chips, badges, nav CTA */
   --border-default: 1px solid var(--color-border-subtle);
-  --border-focus: 2px solid var(--color-interaction);
-  --shadow-overlay: 0 16px 38px rgb(16 19 18 / 16%);
+  --border-focus: 2px solid var(--color-action-primary);
+  --shadow-overlay: 0 16px 38px rgb(17 20 24 / 16%);
+  --shadow-search: 0 12px 40px rgb(17 20 24 / 8%);
   --duration-fast: 120ms;
   --duration-standard: 180ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
