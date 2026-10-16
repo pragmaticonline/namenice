@@ -14,7 +14,7 @@ function escapeHtml(value) {
 }
 
 export function wordmark() {
-  return `<span class="wordmark">namenice<span class="wordmark__dot" aria-hidden="true">.</span></span>`;
+  return `<img class="badger-mark" src="/brand/badger-mark.svg" width="36" height="36" alt="" aria-hidden="true" loading="lazy" /><span class="wordmark">namenice<span class="wordmark__dot" aria-hidden="true">.</span></span>`;
 }
 
 function initials(name) {
@@ -28,11 +28,11 @@ export function authNavLinks(signedIn, username) {
   return `<a href="/#pricing" class="topnav__link">Pricing</a><a href="/transfer" class="topnav__link">Transfer</a><a href="/signin" class="topnav__link">Sign in</a><a href="/signup" class="topnav__cta">Get started</a>`;
 }
 
+const CART_GLYPH = `<svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7.5" cy="17.5" r="1.2" fill="currentColor"/><circle cx="14" cy="17.5" r="1.2" fill="currentColor"/></svg>`;
 export function cartIcon({ count = 0 } = {}) {
-  const badge = count > 0
-    ? `<span class="cart-icon__count">${count}</span>`
-    : `<span class="cart-icon__count is-zero" aria-hidden="true">0</span>`;
-  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart${badge}</a>`;
+  const empty = count > 0 ? "" : " is-zero";
+  const hidden = count > 0 ? "" : ` aria-hidden="true"`;
+  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart<span class="cart-icon__count${empty}"${hidden}><span class="cart-icon__placeholder" aria-hidden="true">${CART_GLYPH}</span><span class="cart-icon__num">${count}</span></span></a>`;
 }
 
 export function statusBadge(status) {

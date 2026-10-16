@@ -62,7 +62,7 @@ Type scale: hero h1 `clamp(44px,7vw,88px)` / line-height .98 / letter-spacing -.
 
 ## 2. Global rules
 
-- Wordmark: `namenice` + a full stop in `--color-action-primary`.
+- Logo: Dig the badger mark + wordmark `namenice` with the full stop in `--color-action-primary` (see `MASCOT.md`).
 - Max content width 1200px, 24px side gutter. Everything must work at phone width (flex-wrap / auto-fit grids; tables in an `overflow-x:auto` box).
 - Touch targets ≥ 44px. Primary buttons 52–56px tall.
 - One primary (blue, filled) action per view region. Secondary = white with border. Tertiary = text link.

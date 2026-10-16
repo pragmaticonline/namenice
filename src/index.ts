@@ -76,17 +76,25 @@ function centsToPrice(amountCents: number | null): string {
   return amountCents == null ? "—" : "$" + (amountCents / 100).toFixed(2);
 }
 
+function badgerMark(px = 96): string {
+  return `<img class="badger-mark" src="/brand/badger-mark.svg" width="${px}" height="${px}" alt="" aria-hidden="true" loading="lazy" />`;
+}
+
 function wordmarkHtml(): string {
-  return `<span class="wordmark">namenice<span class="wordmark__dot" aria-hidden="true">.</span></span>`;
+  return `${badgerMark(36)}<span class="wordmark">namenice<span class="wordmark__dot" aria-hidden="true">.</span></span>`;
+}
+
+function cartBadgeHtml(count = 0): string {
+  // The badge slot is always rendered so the client-side count update never
+  // changes the pill width (no header wobble). Empty shows a cart glyph in a
+  // circle; a real count swaps in via the .is-zero toggle.
+  const empty = count <= 0 ? " is-zero" : "";
+  const hidden = count <= 0 ? ` aria-hidden="true"` : "";
+  return `<span class="cart-icon__count${empty}"${hidden}><span class="cart-icon__placeholder" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.5 5.5h1.4l.9 8.1a1.5 1.5 0 0 0 1.5 1.4h7.4a1.5 1.5 0 0 0 1.5-1.3l.8-6.2H5.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7.5" cy="17.5" r="1.2" fill="currentColor"/><circle cx="14" cy="17.5" r="1.2" fill="currentColor"/></svg></span><span class="cart-icon__num">${count}</span></span>`;
 }
 
 function cartIconHtml(count = 0): string {
-  // The badge slot is always rendered (invisible when empty) so the
-  // client-side count update never changes the pill width (no header wobble).
-  const badge = count > 0
-    ? `<span class="cart-icon__count">${count}</span>`
-    : `<span class="cart-icon__count is-zero" aria-hidden="true">0</span>`;
-  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart${badge}</a>`;
+  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart${cartBadgeHtml(count)}</a>`;
 }
 
 function statusBadgeHtml(status: string): string {
@@ -135,7 +143,7 @@ function shell(title: string, body: string, opts?: { user?: { email:string } | n
       </div>
     </nav>`;
   const accountMenuUser = user ? esc(user.email) : "namenice";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta name="twitter:card" content="summary"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><script>window.__NAMENICE_SIGNED_IN__=${user ? "true" : "false"};window.__NAMENICE_USER__=${JSON.stringify(user?.email||"")};</script><div class="page-shell">${nav}<div class="page-body">${body}</div><footer class="site-footer"><p>\u00A9 ${new Date().getFullYear()} namenice · Find a name worth owning</p></footer></div><script type="module">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><link rel="canonical" href="https://www.namenice.net/"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="Modern DNS + domains — fast, private, Stripe-powered top-ups."><meta property="og:url" content="https://www.namenice.net/"><meta property="og:type" content="website"><meta property="og:image" content="https://www.namenice.net/brand/og-image.png"><meta name="twitter:card" content="summary_large_image"><link rel="icon" href="/brand/favicon.svg" type="image/svg+xml"><link rel="icon" href="/brand/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/brand/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#2F54EB"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/assets/css/tokens.css"><link rel="stylesheet" href="/assets/css/base.css"><link rel="stylesheet" href="/assets/css/homepage.css"><link rel="stylesheet" href="/assets/css/search-results.css"><link rel="stylesheet" href="/assets/css/auth.css">${opts?.headExtra||""}</head><body><script>window.__NAMENICE_SIGNED_IN__=${user ? "true" : "false"};window.__NAMENICE_USER__=${JSON.stringify(user?.email||"")};</script><div class="page-shell">${nav}<div class="page-body">${body}</div><footer class="site-footer"><p>${badgerMark(24)}\u00A9 ${new Date().getFullYear()} namenice · Find a name worth owning</p></footer></div><script type="module">
 import { initCartDrawer } from "/assets/js/cart-drawer.js";
 import { initAccountMenu } from "/assets/js/account-menu.js";
 try { initCartDrawer(); } catch(e) { console.warn(e); }
@@ -480,7 +488,8 @@ app.get("/search", async (c) => {
   if (!parsed) {
     const msg = q ? "Enter a valid domain name, such as example.com."
       : "Enter a name above to check availability — any TLD.";
-    mainColumn = `<section class="card srch-prompt"><p>${esc(msg)}</p></section>`;
+    const dig = q ? `<p class="badger-moment">${badgerMark(96)}</p>` : "";
+    mainColumn = `<section class="card srch-prompt">${dig}<p>${esc(msg)}</p></section>`;
   } else if (!registrarReady) {
     mainColumn = `<section class="card srch-prompt"><p>Domain search is temporarily unavailable. Please try again later.</p></section>`;
   } else {
@@ -555,7 +564,7 @@ app.get("/search", async (c) => {
       <div class="srch-main">${mainColumn}${historyEntries}</div>
       <aside class="srch-cart" aria-label="Your cart">
         <h2>Your cart</h2>
-        <div data-cart-panel><p class="srch-cart__empty">Nothing yet. Tap <strong>Add</strong> on any name to keep it here.</p></div>
+        <div data-cart-panel><p class="badger-moment">${badgerMark(96)}</p><p class="srch-cart__empty">Nothing here yet — let's find you a name. Tap <strong>Add</strong> on any name to keep it here.</p></div>
       </aside>
     </div>
     <script type="module">
@@ -587,7 +596,7 @@ app.get("/search", async (c) => {
         if(!panel) return;
         const items = getCart();
         if(items.length === 0){
-          panel.innerHTML = '<p class="srch-cart__empty">Nothing yet. Tap <strong>Add</strong> on any name to keep it here.</p>';
+          panel.innerHTML = '<p class="badger-moment">${badgerMark(96)}</p><p class="srch-cart__empty">Nothing here yet — let\'s find you a name. Tap <strong>Add</strong> on any name to keep it here.</p>';
           return;
         }
         const rows = items.map((item)=>{
@@ -1049,10 +1058,21 @@ app.get("/robots.txt", (c) => {
   return c.body(`User-agent: *\nAllow: /\nSitemap: https://www.namenice.net/sitemap.xml\n`, 200);
 });
 
+const BADGER_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><circle cx="24" cy="36" r="17" fill="#1E2228"/><circle cx="104" cy="36" r="17" fill="#1E2228"/><path d="M8 60 C8 32 36 20 64 20 C92 20 120 32 120 60 C120 90 92 112 64 124 C36 112 8 90 8 60 Z" fill="#AEB4BE"/><path d="M46 22 C56 18 72 18 82 22 C80 56 72 88 64 114 C56 88 48 56 46 22 Z" fill="#FFFFFF"/><path d="M20 42 C30 26 44 24 48 28 C52 58 56 88 62 110 C46 100 26 82 18 62 Z" fill="#1E2228"/><path d="M108 42 C98 26 84 24 80 28 C76 58 72 88 66 110 C82 100 102 82 110 62 Z" fill="#1E2228"/><circle cx="38" cy="62" r="9" fill="#FFFFFF"/><circle cx="90" cy="62" r="9" fill="#FFFFFF"/><circle cx="64" cy="110" r="13" fill="#2F54EB"/></svg>`;
+
 app.get("/favicon.ico", (c) => {
   c.header("Content-Type", "image/svg+xml");
   c.header("Cache-Control", "public, max-age=86400");
-  return c.body(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#111"/><text x="32" y="43" text-anchor="middle" font-size="38" fill="#fff">n</text></svg>`);
+  return c.body(BADGER_FAVICON_SVG);
+});
+
+app.get("/site.webmanifest", (c) => {
+  c.header("Content-Type", "application/manifest+json");
+  c.header("Cache-Control", "public, max-age=86400");
+  return c.body(JSON.stringify({"name":"namenice","short_name":"namenice","start_url":"/","display":"standalone",
+    "background_color":"#F7F7F4","theme_color":"#2F54EB",
+    "icons":[{"src":"/brand/app-icon-192.png","sizes":"192x192","type":"image/png"},
+             {"src":"/brand/app-icon-512.png","sizes":"512x512","type":"image/png"}]}));
 });
 
 app.on(["GET","POST"], "/api/auth/*", async (c) => {
@@ -1307,7 +1327,7 @@ app.get("/domains", async (c) => {
       <div class="dom-head"><div><h1 class="page-title">Your domains</h1><p class="page-subtitle">${countLine}</p></div>
         <div class="dom-head__actions"><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer in</a><a href="/search" class="button button--primary">+ New domain</a></div></div>
       ${allDomains.length === 0
-        ? `<section class="card dom-empty"><p>You don’t have any domains yet. Search for a name or transfer a domain you already own.</p><div class="dom-empty__actions"><a href="/search" class="button button--primary">Search domains</a><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer a domain</a></div></section>`
+        ? `<section class="card dom-empty"><p class="badger-moment">${badgerMark(96)}</p><p>Nothing here yet — let's find you a name. Search for one, or transfer a domain you already own.</p><div class="dom-empty__actions"><a href="/search" class="button button--primary">Search domains</a><a href="/transfer?org=${orgId}" class="button button--secondary">Transfer a domain</a></div></section>`
         : `<div class="dom-cards">
           <div class="card dom-card"><p class="dom-card__label">Balance</p><p class="dom-card__big">$${(balance/100).toFixed(2)}</p><a href="/billing?org=${orgId}">Top up</a></div>
           <div class="card dom-card"><p class="dom-card__label">Next renewal</p>${nextRenewal ? `<p class="dom-card__big">${fmtDate(nextRenewal.expires_at)}</p><p class="dom-card__sub">${esc(nextRenewal.domain)} · Auto-renew ${nextRenewal.auto_renew ? "on" : "off"} · Balance $${(balance/100).toFixed(2)}</p>` : `<p class="dom-card__big">—</p><p class="dom-card__sub">No dated renewals</p>`}</div>
@@ -1878,7 +1898,7 @@ app.post("/stripe/webhook", async (c) => {
   }
 });
 
-app.notFound((c) => c.html(shell("Page not found — Namenice", `<section class="results-block"><h1>Page not found</h1><p>That address does not exist.</p><a class="button button--primary" href="/">Return home</a></section>`, { headExtra:`<meta name="robots" content="noindex,nofollow">` }), 404));
+app.notFound((c) => c.html(shell("Page not found — Namenice", `<section class="results-block"><p class="badger-moment">${badgerMark(120)}</p><h1>Page not found</h1><p>That address does not exist.</p><a class="button button--primary" href="/">Return home</a></section>`, { headExtra:`<meta name="robots" content="noindex,nofollow">` }), 404));
 
 export default {
   fetch: app.fetch,

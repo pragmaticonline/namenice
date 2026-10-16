@@ -190,3 +190,29 @@ test("cart drawer shows real user when server session present", async () => {
   const cartDrawer = readFileSync(new URL("../public/assets/js/cart-drawer.js", import.meta.url), "utf8");
   assert.match(cartDrawer, /__NAMENICE_USER__/);
 });
+
+test("shell links badger brand assets and manifest", async () => {
+  const res = await worker.fetch(new Request("http://localhost/"), {});
+  const html = await res.text();
+  assert.match(html, /\/brand\/favicon\.svg/);
+  assert.match(html, /\/brand\/apple-touch-icon\.png/);
+  assert.match(html, /\/site\.webmanifest/);
+  assert.match(html, /\/brand\/badger-mark\.svg/);
+  assert.match(html, /og:image/);
+});
+
+test("site manifest names namenice with installable icons", async () => {
+  const res = await worker.fetch(new Request("http://localhost/site.webmanifest"), {});
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") || "", /application\/manifest\+json/);
+  const manifest = await res.json();
+  assert.equal(manifest.short_name, "namenice");
+  assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512"));
+});
+
+test("invalid search shows Dig with guidance", async () => {
+  for (const query of ["a..com", "foo.invalid", "<script>.com"]) {
+    const res = await worker.fetch(new Request(`http://localhost/search?q=${encodeURIComponent(query)}`), {});
+    assert.match(await res.text(), /badger-mark\.svg/);
+  }
+});
