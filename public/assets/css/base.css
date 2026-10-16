@@ -51,7 +51,8 @@ button:disabled { cursor: not-allowed; }
 
 .cart-icon { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--color-surface-dark); color: #FFFFFF; text-decoration: none; font-size: 15px; font-weight: 500; }
 .cart-icon:hover { color: #FFFFFF; }
-.cart-icon__count { background: var(--color-brand-expression); color: var(--color-surface-dark); border-radius: 999px; padding: 2px 8px; font-size: 13px; font-weight: 600; }
+.cart-icon__count { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 34px; background: var(--color-brand-expression); color: var(--color-surface-dark); border-radius: 999px; padding: 2px 8px; font-size: 13px; font-weight: 600; }
+.cart-icon__count.is-zero { visibility: hidden; }
 .cart-icon__count--pulse { animation: cart-pulse 500ms var(--ease-standard); }
 @keyframes cart-pulse {
   0% { transform: scale(1); }

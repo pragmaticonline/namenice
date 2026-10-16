@@ -15,11 +15,18 @@ function cartSubtotal(items) {
 
 export function updateCartBadges() {
   const count = getCartCount();
-  document.querySelectorAll(".cart-icon__count").forEach((el) => el.remove());
   document.querySelectorAll(".cart-icon").forEach((icon) => {
     icon.setAttribute("aria-label", count > 0 ? `Cart, ${count} item${count === 1 ? "" : "s"}` : "Cart");
-    if (count > 0) {
-      icon.insertAdjacentHTML("beforeend", `<span class="cart-icon__count">${count}</span>`);
+    let badge = icon.querySelector(".cart-icon__count");
+    if (!badge) {
+      icon.insertAdjacentHTML("beforeend", `<span class="cart-icon__count is-zero" aria-hidden="true">0</span>`);
+      badge = icon.querySelector(".cart-icon__count");
+    }
+    if (badge) {
+      badge.textContent = String(count);
+      badge.classList.toggle("is-zero", count === 0);
+      if (count === 0) badge.setAttribute("aria-hidden", "true");
+      else badge.removeAttribute("aria-hidden");
     }
   });
 }

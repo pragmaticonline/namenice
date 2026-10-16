@@ -29,7 +29,10 @@ export function authNavLinks(signedIn, username) {
 }
 
 export function cartIcon({ count = 0 } = {}) {
-  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart${count > 0 ? `<span class="cart-icon__count">${count}</span>` : ""}</a>`;
+  const badge = count > 0
+    ? `<span class="cart-icon__count">${count}</span>`
+    : `<span class="cart-icon__count is-zero" aria-hidden="true">0</span>`;
+  return `<a href="/cart" class="cart-icon" aria-label="Cart${count > 0 ? `, ${count} item${count === 1 ? "" : "s"}` : ""}">Cart${badge}</a>`;
 }
 
 export function statusBadge(status) {
