@@ -66,8 +66,23 @@ export const verification = sqliteTable("verification", {
 
 const authSchema = { user, session, account, verification };
 
+const DEV_AUTH_SECRET = "dev-secret-change-me-32chars-min";
+
+function isProductionOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname;
+    return host === "namenice.net" || host === "www.namenice.net";
+  } catch {
+    return false;
+  }
+}
+
 export function createAuth(env: { BETTER_AUTH_SECRET?: string; GOOGLE_CLIENT_ID?: string; GOOGLE_CLIENT_SECRET?: string; GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string; DB: D1Database }, origin: string) {
-  const secret = env.BETTER_AUTH_SECRET || "dev-secret-change-me-32chars-min";
+  const configured = env.BETTER_AUTH_SECRET?.trim();
+  if (isProductionOrigin(origin) && (!configured || configured === DEV_AUTH_SECRET)) {
+    throw new Error("BETTER_AUTH_SECRET must be set to a unique production secret.");
+  }
+  const secret = configured || DEV_AUTH_SECRET;
   const db = drizzle(env.DB, { schema: authSchema });
   return betterAuth({
     secret,

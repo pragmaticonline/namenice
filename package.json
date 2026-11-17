@@ -1,6 +1,6 @@
 {
   "name": "namenice",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Namenice — modern DNS + domains on Cloudflare Workers. Stripe primary, prepaid balance, 90-day Analytics Engine audit.",
   "bin": {

@@ -1,5 +1,5 @@
 -- Namenice index DB — clones blognice memberships + invitations + Analytics audit
-CREATE TABLE accounts (
+CREATE TABLE IF NOT EXISTS accounts (
   id INTEGER PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
@@ -7,7 +7,7 @@ CREATE TABLE accounts (
   billing_status TEXT NOT NULL DEFAULT 'inactive',
   created_at INTEGER NOT NULL
 );
-CREATE TABLE organizations (
+CREATE TABLE IF NOT EXISTS organizations (
   id INTEGER PRIMARY KEY,
   public_id TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
@@ -15,7 +15,7 @@ CREATE TABLE organizations (
   is_company INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
-CREATE TABLE organization_members (
+CREATE TABLE IF NOT EXISTS organization_members (
   account_id INTEGER NOT NULL,
   org_id INTEGER NOT NULL,
   role TEXT NOT NULL DEFAULT 'owner',
@@ -24,9 +24,9 @@ CREATE TABLE organization_members (
   FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_org_members_account ON organization_members(account_id);
-CREATE INDEX idx_org_members_org ON organization_members(org_id);
-CREATE TABLE organization_invitations (
+CREATE INDEX IF NOT EXISTS idx_org_members_account ON organization_members(account_id);
+CREATE INDEX IF NOT EXISTS idx_org_members_org ON organization_members(org_id);
+CREATE TABLE IF NOT EXISTS organization_invitations (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   email TEXT NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE organization_invitations (
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE,
   FOREIGN KEY (invited_by) REFERENCES accounts(id) ON DELETE CASCADE
 );
-CREATE TABLE domains (
+CREATE TABLE IF NOT EXISTS domains (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   domain TEXT NOT NULL UNIQUE,
@@ -54,8 +54,8 @@ CREATE TABLE domains (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_domains_org ON domains(org_id);
-CREATE TABLE dns_records (
+CREATE INDEX IF NOT EXISTS idx_domains_org ON domains(org_id);
+CREATE TABLE IF NOT EXISTS dns_records (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   domain TEXT NOT NULL,
@@ -69,8 +69,8 @@ CREATE TABLE dns_records (
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_dns_org_domain ON dns_records(org_id, domain);
-CREATE TABLE domain_contacts (
+CREATE INDEX IF NOT EXISTS idx_dns_org_domain ON dns_records(org_id, domain);
+CREATE TABLE IF NOT EXISTS domain_contacts (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   domain TEXT NOT NULL,
@@ -80,7 +80,7 @@ CREATE TABLE domain_contacts (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
-CREATE TABLE api_keys (
+CREATE TABLE IF NOT EXISTS api_keys (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   label TEXT NOT NULL,
@@ -94,14 +94,14 @@ CREATE TABLE api_keys (
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 -- Stripe wallet — top-up with custom amount, pay renewals/domains from balance
-CREATE TABLE org_balances (
+CREATE TABLE IF NOT EXISTS org_balances (
   org_id INTEGER PRIMARY KEY,
   balance_cents INTEGER NOT NULL DEFAULT 0,
   stripe_customer_id TEXT,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
-CREATE TABLE balance_ledger (
+CREATE TABLE IF NOT EXISTS balance_ledger (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   account_id INTEGER NOT NULL,
@@ -116,8 +116,8 @@ CREATE TABLE balance_ledger (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_ledger_org ON balance_ledger(org_id, created_at DESC);
-CREATE TABLE stripe_events (
+CREATE INDEX IF NOT EXISTS idx_ledger_org ON balance_ledger(org_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS stripe_events (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
   org_id INTEGER,
@@ -128,7 +128,7 @@ CREATE TABLE stripe_events (
   processed_at INTEGER
 );
 -- Better Auth tables (minimal, better-auth will auto-migrate but keep for local)
-CREATE TABLE user (
+CREATE TABLE IF NOT EXISTS user (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   name TEXT,
@@ -137,7 +137,7 @@ CREATE TABLE user (
   createdAt INTEGER NOT NULL,
   updatedAt INTEGER NOT NULL
 );
-CREATE TABLE session (
+CREATE TABLE IF NOT EXISTS session (
   id TEXT PRIMARY KEY,
   userId TEXT NOT NULL,
   token TEXT NOT NULL UNIQUE,
@@ -148,7 +148,7 @@ CREATE TABLE session (
   updatedAt INTEGER NOT NULL,
   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
 );
-CREATE TABLE account (
+CREATE TABLE IF NOT EXISTS account (
   id TEXT PRIMARY KEY,
   accountId TEXT NOT NULL,
   providerId TEXT NOT NULL,
@@ -165,7 +165,7 @@ CREATE TABLE account (
   updatedAt INTEGER NOT NULL,
   FOREIGN KEY (userId) REFERENCES user(id) ON DELETE CASCADE
 );
-CREATE TABLE verification (
+CREATE TABLE IF NOT EXISTS verification (
   id TEXT PRIMARY KEY,
   identifier TEXT NOT NULL,
   value TEXT NOT NULL,
@@ -173,7 +173,7 @@ CREATE TABLE verification (
   createdAt INTEGER,
   updatedAt INTEGER
 );
-CREATE TABLE domain_forwards (
+CREATE TABLE IF NOT EXISTS domain_forwards (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   domain TEXT NOT NULL,
@@ -183,8 +183,8 @@ CREATE TABLE domain_forwards (
   created_at INTEGER NOT NULL,
   FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_forwards_org_domain ON domain_forwards(org_id, domain);
-CREATE TABLE webhooks (
+CREATE INDEX IF NOT EXISTS idx_forwards_org_domain ON domain_forwards(org_id, domain);
+CREATE TABLE IF NOT EXISTS webhooks (
   id INTEGER PRIMARY KEY,
   org_id INTEGER NOT NULL,
   url TEXT NOT NULL,

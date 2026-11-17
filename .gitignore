@@ -3,5 +3,4 @@ node_modules/
 .dev.vars
 .env
 wrangler.production.jsonc
-.dev.vars.example
 wrangler.deploy.jsonc
