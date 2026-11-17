@@ -210,6 +210,12 @@ test("site manifest names namenice with installable icons", async () => {
   assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512"));
 });
 
+test("exact-match domain name stays compact and wraps gracefully", () => {
+  const css = readFileSync(new URL("../public/assets/css/search-results.css", import.meta.url), "utf8");
+  assert.match(css, /\.srch-exact__domain\s*\{[^}]*font-size\s*:\s*32px[^}]*overflow-wrap\s*:\s*break-word/s);
+  assert.match(css, /@media\s*\(max-width:\s*720px\)\s*\{[^}]*\.srch-exact__domain\s*\{[^}]*font-size\s*:\s*26px/s);
+});
+
 test("invalid search shows Dig with guidance", async () => {
   for (const query of ["a..com", "foo.invalid", "<script>.com"]) {
     const res = await worker.fetch(new Request(`http://localhost/search?q=${encodeURIComponent(query)}`), {});

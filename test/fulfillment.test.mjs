@@ -15,7 +15,7 @@ test("paid Purchase registers the Domain before marking it active", async (t) =>
   t.after(() => { globalThis.fetch = originalFetch; });
   const contact = { name:"A Person", email:"a@example.com", phone_cc:"1", phone_number:"5551234", address1:"1 Main", city:"Town", state:"CA", zip:"90000", country:"US", privacy:"full", duration:1 };
   const env = {
-    DYNADOT_API_KEY:"sandbox_key", DYNADOT_API_SECRET:"secret", DYNADOT_SANDBOX:"true",
+    DYNADOT_API_KEY:"prod_key", DYNADOT_API_SECRET:"prod_secret",
     DB: { prepare(sql) { return { bind() { return {
       async first() { return sql.includes("FROM domain_contacts") ? { payload: JSON.stringify(contact) } : null; },
       async run() { if (sql.includes("UPDATE domains SET status='active'")) active = true; return { meta:{ changes:1 } }; },
@@ -28,4 +28,21 @@ test("paid Purchase registers the Domain before marking it active", async (t) =>
   assert.equal(registrarCalls.length, 2);
   assert.match(registrarCalls[1].url, /\/domains\/example\.com\/register$/);
   assert.equal(active, true);
+});
+
+test("paid Purchase refuses sandbox credentials without touching the registrar", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => { fetchCalls++; return new Response("{}", { status: 200 }); };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const env = {
+    DYNADOT_API_KEY:"sandbox_key", DYNADOT_API_SECRET:"sandbox_secret", DYNADOT_SANDBOX:"true",
+    DB: { prepare() { throw new Error("DB must not be touched"); } },
+  };
+
+  const result = await fulfillPaidDomain(env, 42, "example.com");
+
+  assert.equal(result.ok, false);
+  assert.match(String(result.error), /Refusing production/);
+  assert.equal(fetchCalls, 0);
 });

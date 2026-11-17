@@ -1,4 +1,4 @@
-import { createContact, registerDomain } from "./dynadot.ts";
+import { assertProductionDynadotReady, createContact, registerDomain } from "./dynadot.ts";
 
 type FulfillmentEnv = {
   DB: D1Database;
@@ -9,6 +9,8 @@ type FulfillmentEnv = {
 
 export async function fulfillPaidDomain(env: FulfillmentEnv, orgId: number, domain: string): Promise<{ok:true}|{ok:false;error:string}> {
   try {
+    // Paid fulfillment must never register against Dynadot sandbox credentials.
+    assertProductionDynadotReady(env);
     const existing = await env.DB.prepare("SELECT status FROM domains WHERE org_id=? AND domain=?").bind(orgId, domain).first<{status:string}>();
     if (existing?.status === "active") return { ok:true };
     const row = await env.DB.prepare("SELECT payload FROM domain_contacts WHERE org_id=? AND domain=? AND contact_type='pending' ORDER BY id DESC LIMIT 1").bind(orgId, domain).first<{payload:string}>();

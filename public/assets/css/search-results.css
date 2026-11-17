@@ -245,7 +245,7 @@
 .srch-exact { background: var(--color-surface-raised); border: 2px solid var(--color-action-primary); border-radius: var(--radius-card); padding: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
 .srch-exact__info { flex: 1 1 260px; min-width: 0; }
 .srch-exact__info .pill { margin: 0 0 8px; }
-.srch-exact__domain { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 44px; letter-spacing: -.02em; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.srch-exact__domain { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 32px; line-height: 1.15; letter-spacing: -.02em; color: var(--color-text-primary); overflow-wrap: break-word; }
 .srch-exact__renew { margin: 6px 0 0; color: var(--color-text-secondary); font-size: 15px; }
 .srch-exact__buy { text-align: right; }
 .srch-exact__price { margin: 0; font-size: 32px; font-weight: 600; color: var(--color-text-primary); }
@@ -286,7 +286,7 @@
 .recent-searches-inline a:hover { text-decoration: underline; }
 
 @media (max-width: 720px) {
-  .srch-exact__domain { font-size: 32px; }
+  .srch-exact__domain { font-size: 26px; }
   .srch-exact__buy { text-align: left; }
   .srch-exact__cta { flex: 1 1 100%; }
   .srch-row__price { flex: 1 1 auto; text-align: left; }

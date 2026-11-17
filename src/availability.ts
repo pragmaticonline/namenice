@@ -50,7 +50,7 @@ async function registryHasDomain(domain:string):Promise<boolean|null> {
 
 export async function getDomainQuote(env:AvailabilityEnv, domain:string):Promise<{ok:true;quote:DomainQuote}|{ok:false;error:string}> {
   const normalized = domain.toLowerCase().trim();
-  const result:DynadotResult<any> = await searchDomain(env, normalized, { show_price:true });
+  const result:DynadotResult<any> = await searchDomain(env, normalized, { show_price:true, currency:"USD" });
   if (!result.ok || !result.data) return { ok:false, error:result.error || "Registrar search failed" };
   const data = result.data;
   const nested = data?.search_results?.[normalized] || data?.searchResults?.[normalized] || null;

@@ -1,8 +1,14 @@
-import { dynadotConfigured, renewDomain } from "./dynadot.ts";
+import { assertProductionDynadotReady, dynadotConfigured, renewDomain } from "./dynadot.ts";
 
 type RenewalEnv = { DB:D1Database; DYNADOT_API_KEY?:string; DYNADOT_API_SECRET?:string; DYNADOT_SANDBOX?:string };
 
 export async function renewRegisteredDomain(env:RenewalEnv, orgId:number, domain:string): Promise<{ok:true;expirationYear:number}|{ok:false;error:string}> {
+  try {
+    // Paid renewal must never run against Dynadot sandbox credentials.
+    assertProductionDynadotReady(env);
+  } catch (error) {
+    return {ok:false,error:String((error as Error).message || error)};
+  }
   if (!dynadotConfigured(env)) return {ok:false,error:"Dynadot not configured"};
   const current = await env.DB.prepare("SELECT expires_at FROM domains WHERE org_id=? AND domain=?").bind(orgId, domain).first<{expires_at:number|null}>();
   if (!current) return {ok:false,error:"Domain not found"};
