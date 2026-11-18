@@ -264,6 +264,76 @@ test("favorited heart renders filled bright red", () => {
   assert.match(css, /\.compare-table__favorite\[aria-pressed="true"\]\s+svg\s*\{[^}]*fill\s*:\s*currentColor/s);
 });
 
+test("buy form offers saved addresses with a country dropdown", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("api.dynadot.com")) {
+      return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"11.62" } }), { status:200, headers:{ "content-type":"application/json" } });
+    }
+    if (String(url).includes("rdap.org")) return new Response("blocked", { status:403 });
+    if (String(url).includes("rdap.verisign.com")) return new Response("", { status:404 });
+    return originalFetch(url);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const savedPayload = JSON.stringify({ name:"A Person", email:"a@example.com", phone_cc:"66", phone_number:"81", address1:"9 Soi", city:"BKK", zip:"10100", country:"TH" });
+  const db = { prepare(sql) { return { bind() { return {
+    async first() { return sql.includes("org_balances") ? { balance_cents: 5000 } : null; },
+    async all() { return sql.includes("domain_contacts") ? { results: [{ payload: savedPayload }] } : { results: [] }; },
+    async run() { return {}; },
+  }; } }; } };
+  const env = { DYNADOT_API_KEY:"prod_test_key", DYNADOT_API_SECRET:"prod_test_secret", DB: db };
+  const response = await worker.fetch(new Request("http://localhost/domains/search", {
+    method:"POST",
+    headers:{ "content-type":"application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ domain:"buyformcheck.com" }).toString(),
+  }), env);
+  const html = await response.text();
+  assert.match(html, /id="buy-saved"/);
+  assert.match(html, /<option value="0" selected>/);
+  assert.match(html, /value="A Person"/);
+  assert.match(html, /<select name=contact_country[^>]*>/);
+  assert.match(html, /<option value="TH" selected>Thailand<\/option>/);
+  const modules = [...html.matchAll(/<script type="module">(.*?)<\/script>/gs)].map((m) => m[1]);
+  assert.ok(modules.length > 0);
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, mkdtempSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "namenice-buy-"));
+  for (const [i, src] of modules.entries()) {
+    const file = join(dir, `buy-inline-${i}.mjs`);
+    writeFileSync(file, src);
+    execFileSync(process.execPath, ["--check", file], { stdio:"pipe" });
+  }
+});
+
+test("buy form defaults country to the visitor's geo header", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("api.dynadot.com")) {
+      return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"11.62" } }), { status:200, headers:{ "content-type":"application/json" } });
+    }
+    if (String(url).includes("rdap.org")) return new Response("blocked", { status:403 });
+    if (String(url).includes("rdap.verisign.com")) return new Response("", { status:404 });
+    return originalFetch(url);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const db = { prepare() { return { bind() { return {
+    async first() { return { balance_cents: 5000 }; },
+    async all() { return { results: [] }; },
+    async run() { return {}; },
+  }; } }; } };
+  const env = { DYNADOT_API_KEY:"prod_test_key", DYNADOT_API_SECRET:"prod_test_secret", DB: db };
+  const response = await worker.fetch(new Request("http://localhost/domains/search", {
+    method:"POST",
+    headers:{ "content-type":"application/x-www-form-urlencoded", "cf-ipcountry": "TH" },
+    body: new URLSearchParams({ domain:"geoformcheck.com" }).toString(),
+  }), env);
+  const html = await response.text();
+  assert.doesNotMatch(html, /id="buy-saved"/);
+  assert.match(html, /<option value="TH" selected>Thailand<\/option>/);
+});
+
 test("invalid search shows Dig with guidance", async () => {
   for (const query of ["a..com", "foo.invalid", "<script>.com"]) {
     const res = await worker.fetch(new Request(`http://localhost/search?q=${encodeURIComponent(query)}`), {});

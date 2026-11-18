@@ -10,6 +10,8 @@ import { authenticateApiKey } from "./api-keys.ts";
 import { fulfillPaidDomain } from "./fulfillment.ts";
 import { renewRegisteredDomain } from "./renewal.ts";
 import { getDomainQuote, getTransferPrice } from "./availability.ts";
+import { countryOptions, defaultCountryCode, fetchSavedAddresses, isCountryCode, savedAddressOptions, savedAddressesJson } from "./countries.ts";
+import { dialCodeFor, phoneCcOptions } from "./dial-codes.ts";
 
 
 function esc(s: string): string {
@@ -711,6 +713,10 @@ app.get("/checkout", async (c) => {
   const explicit = await requireExplicitOrg(c, user.email);
   if (!explicit.ok) return explicit.response;
   orgId = explicit.orgId;
+  const geoCountry = defaultCountryCode(c.req.header("cf-ipcountry"));
+  const saved = await fetchSavedAddresses(c.env.DB, orgId);
+  const current = saved[0] || null;
+  const val = (field: string, fallback = "") => esc((current as any)?.[field] ?? fallback);
   const body = `
     <section class="search-toolbar"><h1 class="search-toolbar__heading">Checkout</h1><p class="taken-domain__dates">Complete your Domain Purchase with Stripe or your Organization Balance.</p></section>
     <section class="results-block">
@@ -722,18 +728,19 @@ app.get("/checkout", async (c) => {
               <input type="hidden" name="domains" id="checkout-domains" />
               <input type="hidden" name="privacy" value="full" />
               <div id="checkout-items"></div>
-              <label>Your name <input name="contact_name" required maxlength="80" /></label>
-              <label>Email <input name="contact_email" type="email" value="${user ? esc(user.email) : ""}" required /></label>
+              ${saved.length ? `<label>Saved address <select name="saved_address" id="checkout-saved" data-geo="${geoCountry}" data-geo-dial="${dialCodeFor(geoCountry) || "1"}">${savedAddressOptions(saved, 0)}</select></label><script type="application/json" id="checkout-saved-data">${savedAddressesJson(saved)}</script>` : ""}
+              <label>Your name <input name="contact_name" value="${val("name")}" required maxlength="80" /></label>
+              <label>Email <input name="contact_email" type="email" value="${val("email", user?.email || "")}" required /></label>
               <div class="checkout-fields-grid checkout-fields-grid--phone">
-                <label>Phone CC <input name="contact_phone_cc" value="1" required maxlength="5" /></label>
-                <label>Phone <input name="contact_phone" required maxlength="20" /></label>
+                <label>Phone CC <select name="contact_phone_cc" required>${phoneCcOptions(current?.country || geoCountry, current?.phone_cc || null)}</select></label>
+                <label>Phone <input name="contact_phone" value="${val("phone_number")}" required maxlength="20" /></label>
               </div>
-              <label>Address <input name="contact_address1" required maxlength="120" /></label>
+              <label>Address <input name="contact_address1" value="${val("address1")}" required maxlength="120" /></label>
               <div class="checkout-fields-grid">
-                <label>City <input name="contact_city" required maxlength="80" /></label>
-                <label>State <input name="contact_state" maxlength="80" /></label>
-                <label>ZIP <input name="contact_zip" required maxlength="20" /></label>
-                <label>Country <input name="contact_country" value="US" required maxlength="2" /></label>
+                <label>City <input name="contact_city" value="${val("city")}" required maxlength="80" /></label>
+                <label>State <input name="contact_state" value="${val("state")}" maxlength="80" /></label>
+                <label>ZIP <input name="contact_zip" value="${val("zip")}" required maxlength="20" /></label>
+                <label>Country <select name="contact_country" required>${countryOptions(current?.country || geoCountry)}</select></label>
               </div>
               <button class="button button--primary" type="submit" id="checkout-pay">Continue to Stripe</button>
             </form>
@@ -751,6 +758,31 @@ app.get("/checkout", async (c) => {
       const list = document.getElementById("checkout-items");
       const form = document.getElementById("checkout-form");
       const submit = document.getElementById("checkout-pay");
+      const savedSelect = document.getElementById("checkout-saved");
+      if (savedSelect) {
+        let savedData = [];
+        try { savedData = JSON.parse(document.getElementById("checkout-saved-data").textContent || "[]"); } catch {}
+        savedSelect.addEventListener("change", () => {
+          const pick = (name, value) => { const el = document.querySelector('[name="' + name + '"]'); if (el) el.value = value == null ? "" : value; };
+          const pickCc = (country, dial) => {
+            const sel = document.querySelector('[name="contact_phone_cc"]');
+            if (!sel) return;
+            const list = Array.prototype.slice.call(sel.options);
+            const exact = list.find((o) => o.dataset.country === String(country || "").toUpperCase() && o.value === String(dial || "")) || list.find((o) => o.value === String(dial || ""));
+            if (exact) sel.selectedIndex = list.indexOf(exact);
+          };
+          if (savedSelect.value === "new") {
+            ["contact_name","contact_email","contact_phone","contact_address1","contact_city","contact_state","contact_zip"].forEach((name) => pick(name, ""));
+            pickCc(savedSelect.dataset.geo, savedSelect.dataset.geoDial);
+            pick("contact_country", savedSelect.dataset.geo || "US");
+            return;
+          }
+          const a = savedData[Number(savedSelect.value)] || {};
+          pick("contact_name", a.name); pick("contact_email", a.email); pickCc(a.country, a.phone_cc);
+          pick("contact_phone", a.phone_number); pick("contact_address1", a.address1); pick("contact_city", a.city);
+          pick("contact_state", a.state); pick("contact_zip", a.zip); pick("contact_country", a.country);
+        });
+      }
       if(items.length===0){
         summary.innerHTML='<p class="taken-domain__dates">No items. <a class="text-action" href="/search">Search</a></p>';
         list.innerHTML='<p class="taken-domain__dates">Add a Domain before checking out.</p>';
@@ -801,6 +833,8 @@ app.post("/checkout", async (c) => {
     country: String(form.get("contact_country") || "US").trim().toUpperCase().slice(0, 2),
   };
   if (!contact.name || !contact.email || !contact.phone_number || !contact.address1 || !contact.city || !contact.zip || !contact.country) return c.text("Domain Contact fields required", 400);
+  if (!isCountryCode(contact.country)) return c.text("Unsupported country code", 400);
+  if (!/^\d{1,5}$/.test(contact.phone_cc)) return c.text("Unsupported phone code", 400);
   const now = Math.floor(Date.now() / 1000);
   for (const domain of domains) {
     await c.env.DB.prepare("INSERT OR IGNORE INTO domains (org_id, domain, status, privacy, created_at) VALUES (?, ?, 'pending', 1, ?)").bind(orgId, domain, now).run();
@@ -1360,19 +1394,51 @@ app.post("/domains/search", async (c) => {
   const available = quoteResult.quote.available;
   const price = quoteResult.quote.amountCents == null ? null : (quoteResult.quote.amountCents/100).toFixed(2);
   const balance = await getOrgBalance(c.env as any, orgId);
-  return c.html(shell("Search — "+esc(domain), `<div class=card><h3>${esc(domain)} — ${available?'<span class=badge>available</span>':'<span class=muted>taken</span>'}</h3>${price?`<p>Price: $${price} /yr <span class=muted>incl. $2 fee</span></p>`:""}${available?`<form method=post action="/domains/buy?org=${orgId}" style="display:grid;gap:.6rem;max-width:560px">
+  const geoCountry = defaultCountryCode(c.req.header("cf-ipcountry"));
+  const saved = await fetchSavedAddresses(c.env.DB, orgId);
+  const current = saved[0] || null;
+  const val = (field: string, fallback = "") => esc((current as any)?.[field] ?? fallback);
+  return c.html(shell("Search — "+esc(domain), `<div class=card><h3>${esc(domain)} — ${available?'<span class=badge>available</span>':'<span class=muted>taken</span>'}</h3>${price?`<p>Price: $${price} /yr <span class=muted>incl. $1 fee</span></p>`:""}${available?`<form method=post action="/domains/buy?org=${orgId}" id="buy-form" style="display:grid;gap:.6rem;max-width:560px">
       <input type=hidden name=domain value="${esc(domain)}">
-      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Your name <input name=contact_name required placeholder="Jane Doe" maxlength=80></label><label>Email <input name=contact_email type=email required placeholder="jane@example.com"></label></div>
-      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Phone CC <input name=contact_phone_cc required placeholder="1" value="1" maxlength=5></label><label>Phone <input name=contact_phone required placeholder="5551234567" maxlength=20></label></div>
-      <label>Address <input name=contact_address1 required placeholder="123 Main St" maxlength=120></label>
-      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>City <input name=contact_city required placeholder="San Francisco" maxlength=80></label><label>State <input name=contact_state placeholder="CA" maxlength=80></label></div>
-      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>ZIP <input name=contact_zip required placeholder="94105" maxlength=20></label><label>Country (2-letter) <input name=contact_country required placeholder="US" value="US" maxlength=2 style="text-transform:uppercase"></label></div>
-      <label>Organization (optional) <input name=contact_org placeholder="Acme Inc" maxlength=80></label>
+      ${saved.length ? `<label>Saved address <select name=saved_address id="buy-saved" data-geo="${geoCountry}" data-geo-dial="${dialCodeFor(geoCountry) || "1"}">${savedAddressOptions(saved, 0)}</select></label><script type="application/json" id="buy-saved-data">${savedAddressesJson(saved)}</script>` : ""}
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Your name <input name=contact_name required placeholder="Jane Doe" maxlength=80 value="${val("name")}"></label><label>Email <input name=contact_email type=email required placeholder="jane@example.com" value="${val("email")}"></label></div>
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Phone CC <select name=contact_phone_cc required>${phoneCcOptions(current?.country || geoCountry, current?.phone_cc || null)}</select></label><label>Phone <input name=contact_phone required placeholder="5551234567" maxlength=20 value="${val("phone_number")}"></label></div>
+      <label>Address <input name=contact_address1 required placeholder="123 Main St" maxlength=120 value="${val("address1")}"></label>
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>City <input name=contact_city required placeholder="San Francisco" maxlength=80 value="${val("city")}"></label><label>State <input name=contact_state placeholder="CA" maxlength=80 value="${val("state")}"></label></div>
+      <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>ZIP <input name=contact_zip required placeholder="94105" maxlength=20 value="${val("zip")}"></label><label>Country <select name=contact_country required>${countryOptions(current?.country || geoCountry)}</select></label></div>
+      <label>Organization (optional) <input name=contact_org placeholder="Acme Inc" maxlength=80 value="${val("organization")}"></label>
       <div style="display:grid;gap:.6rem;grid-template-columns:1fr 1fr"><label>Privacy <select name=privacy><option value="full" selected>Full</option><option value="partial">Partial</option><option value="off">Off</option></select></label><label>Duration <select name=duration><option value=1 selected>1y — $${price}</option><option value=2>2y</option><option value=5>5y</option><option value=10>10y</option></select></label></div>
       <label style="display:flex;gap:.5rem;align-items:center"><input type=checkbox name=pay_from_balance value=1 checked> Pay from balance ($${(balance/100).toFixed(2)}) — else Stripe Checkout</label>
       <button class=btn type=submit>Buy ${esc(domain)} — $${price}</button>
       <p class=muted style="font-size:.8rem;margin:0">By purchasing you agree to Dynadot registration terms. ${isSandboxEnabled(c.env as any)?"Sandbox simulated purchase.":""}</p>
-    </form>`:`<p class=muted>Try another name.</p>`}<p><a href="/domains?org=${orgId}">← Back to domains</a></p></div>`));
+    </form><script type="module">
+      const savedSelect = document.getElementById("buy-saved");
+      if (savedSelect) {
+        let savedData = [];
+        try { savedData = JSON.parse(document.getElementById("buy-saved-data").textContent || "[]"); } catch {}
+        savedSelect.addEventListener("change", () => {
+          const pick = (name, value) => { const el = document.querySelector('[name="' + name + '"]'); if (el) el.value = value == null ? "" : value; };
+          const pickCc = (country, dial) => {
+            const sel = document.querySelector('[name="contact_phone_cc"]');
+            if (!sel) return;
+            const list = Array.prototype.slice.call(sel.options);
+            const exact = list.find((o) => o.dataset.country === String(country || "").toUpperCase() && o.value === String(dial || "")) || list.find((o) => o.value === String(dial || ""));
+            if (exact) sel.selectedIndex = list.indexOf(exact);
+          };
+          if (savedSelect.value === "new") {
+            ["contact_name","contact_email","contact_phone","contact_address1","contact_city","contact_state","contact_zip","contact_org"].forEach((name) => pick(name, ""));
+            pickCc(savedSelect.dataset.geo, savedSelect.dataset.geoDial);
+            pick("contact_country", savedSelect.dataset.geo || "US");
+            return;
+          }
+          const a = savedData[Number(savedSelect.value)] || {};
+          pick("contact_name", a.name); pick("contact_email", a.email); pickCc(a.country, a.phone_cc);
+          pick("contact_phone", a.phone_number); pick("contact_address1", a.address1); pick("contact_city", a.city);
+          pick("contact_state", a.state); pick("contact_zip", a.zip); pick("contact_country", a.country);
+          pick("contact_org", a.organization);
+        });
+      }
+    </script>`:`<p class=muted>Try another name.</p>`}<p><a href="/domains?org=${orgId}">← Back to domains</a></p></div>`));
 });
 
 app.post("/domains/link", async (c) => {
@@ -1415,6 +1481,8 @@ app.post("/domains/buy", async (c) => {
   if (!contact.name || !contact.email || !contact.phone_number || !contact.address1 || !contact.city || !contact.zip || !contact.country) {
     return c.html(shell("Buy — missing fields", `<div class=card><p>Please fill name, email, phone, address, city, zip, country.</p><a href="/domains?org=${orgId}">← Back</a></div>`), 400);
   }
+  if (!isCountryCode(contact.country)) return c.text("Unsupported country code", 400);
+  if (!/^\d{1,5}$/.test(contact.phone_cc)) return c.text("Unsupported phone code", 400);
   if (!dynadotConfigured(c.env as any)) return c.text("Domain search is temporarily unavailable", 503);
   const quoteResult = await getDomainQuote(c.env as any, domain);
   if (!quoteResult.ok) return c.text(quoteResult.error, 503);
