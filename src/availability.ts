@@ -10,7 +10,7 @@ function flag(value:unknown):boolean {
 
 function moneyToCents(value:unknown):number|null {
   const amount = Number(value);
-  return Number.isFinite(amount) && amount >= 0 ? Math.round((amount + 2) * 100) : null;
+  return Number.isFinite(amount) && amount >= 0 ? Math.round((amount + 1) * 100) : null;
 }
 
 const COMMON_RDAP_BASES:Record<string,string> = {

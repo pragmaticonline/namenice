@@ -25,5 +25,5 @@ test("domain quotes request USD so Thai-account prices are not shown as dollars"
 
   assert.equal(result.ok, true);
   assert.match(requests.find((u) => u.includes("api.dynadot.com")), /currency=USD/);
-  assert.deepEqual(result.quote, { domain:"foobar2234.com", available:true, premium:false, amountCents:1362 });
+  assert.deepEqual(result.quote, { domain:"foobar2234.com", available:true, premium:false, amountCents:1262 });
 });

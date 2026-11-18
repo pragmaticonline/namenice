@@ -66,7 +66,7 @@ export function domainResultRow(result, { selected = false, action = "Add", favo
   </article>`;
 }
 
-export function domainSearch({ query, state = "initial", result, suggestions = [], tld = ".net" }) {
+export function domainSearch({ query, state = "initial", result, suggestions = [], tld = ".com" }) {
   const safeQuery = escapeHtml(query.trim() || "Search your domain name");
   const isSearching = state === "searching";
   const isResult = ["available", "unavailable", "premium", "selected"].includes(state);

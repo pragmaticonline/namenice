@@ -32,7 +32,7 @@ function render() {
         <div class="signature-search__frame">
           <span class="signature-search__icon" aria-hidden="true">\u2315</span>
           <input id="jump-search-input" class="signature-search__input" placeholder="Search your domain name" aria-label="Search your domain name" />
-          <span class="signature-search__tld">.net</span>
+          <span class="signature-search__tld">.com</span>
           <button class="signature-search__submit" id="jump-search-submit" type="button">Search</button>
         </div>
       </div>

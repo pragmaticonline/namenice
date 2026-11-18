@@ -1,4 +1,4 @@
-const TLD_OPTIONS = [".net", ".com", ".io", ".co", ".org"];
+const TLD_OPTIONS = [".com", ".net", ".io", ".co", ".org"];
 
 let menuInjected = false;
 let activeTrigger = null;

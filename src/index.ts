@@ -31,7 +31,7 @@ function isValidSearchDomain(domain:string):boolean {
 
 /* Extensions checked together on /search. Keep small: every entry costs a
    live registrar + RDAP lookup, all run in parallel per search. */
-const SEARCH_TLDS = ["net", "com", "co", "io", "app", "org", "dev"];
+const SEARCH_TLDS = ["com", "net", "co", "io", "app", "org", "dev"];
 
 /* Split a raw query into the exact domain to feature plus the bare stem used
    for the other-extension rows and idea chips. Returns null when the query
@@ -47,8 +47,8 @@ function parseSearchQuery(rawQuery: string): { exact: string; stem: string } | n
     return { exact: raw, stem };
   }
   const stem = raw.replace(/[^a-z0-9-]/g, "");
-  if (!stem || !isValidSearchDomain(stem + ".net")) return null;
-  return { exact: stem + ".net", stem };
+  if (!stem || !isValidSearchDomain(stem + ".com")) return null;
+  return { exact: stem + ".com", stem };
 }
 
 type QuoteSummary = { domain: string; available: boolean; premium: boolean; amountCents: number | null };
@@ -428,7 +428,7 @@ app.get("/", async (c) => {
   const user = await getSessionUser(c);
   const homepageBody = `
     <header class="home-hero">
-      <p class="home-pill">.net · .com · .io · .co · .org and more</p>
+      <p class="home-pill">.com · .net · .io · .co · .org and more</p>
       <h1>Find a name<br />worth owning.</h1>
       <p class="home-sub">Type an idea. We check popular extensions at once and show the real price — first year and renewal.</p>
       <form method="get" action="/search" class="home-search" onsubmit="const v=this.querySelector('input[name=q]').value.trim(); if(!v){event.preventDefault(); this.querySelector('input[name=q]').focus(); return false;}">
@@ -436,7 +436,6 @@ app.get("/", async (c) => {
         <input id="home-q" name="q" value="" placeholder="Try \u201Csunrise bakery\u201D or sunrise.com" autocomplete="off" />
         <button type="submit">Search</button>
       </form>
-      <div class="home-popular"><span>Popular:</span><a class="chip" href="/search?q=sunrise">sunrise</a><a class="chip" href="/search?q=studio">studio</a><a class="chip" href="/search?q=getfit">getfit</a></div>
       <p class="home-trust">Free to search · No account needed · WHOIS privacy included</p>
     </header>
     <section class="home-section">
@@ -448,8 +447,8 @@ app.get("/", async (c) => {
     </section>
     <section class="home-section" id="pricing">
       <div class="home-band">
-        <div class="home-band__copy"><h2>One honest price.</h2><p>.net registers and renews at the same price. No teaser rates, no hidden add-ons, privacy included.</p></div>
-        <div class="home-band__card"><p class="home-band__card-name">yourname.net</p>
+        <div class="home-band__copy"><h2>One honest price.</h2><p>.com registers and renews at the same price. No teaser rates, no hidden add-ons, privacy included.</p></div>
+        <div class="home-band__card"><p class="home-band__card-name">yourname.com</p>
           <div class="home-band__prices"><div><p>First year</p><strong>$14.99</strong></div><div><p>Renews at</p><strong>$14.99</strong></div></div>
           <a class="home-band__cta" href="/search">Check your name →</a>
         </div>
@@ -1000,7 +999,7 @@ app.get("/transfer", async (c) => {
 app.get("/api/search", async (c) => {
   const raw = (c.req.query("q") || c.req.query("domain") || "").trim().toLowerCase();
   if (!raw) return c.json({ error: "q required" }, 400);
-  const domain = raw.includes(".") ? raw : raw + ".net";
+  const domain = raw.includes(".") ? raw : raw + ".com";
   if (!isValidSearchDomain(domain)) return c.json({ error: "Enter a valid domain name", domain }, 400);
   if (!dynadotConfigured(c.env as any)) return c.json({ error: "Domain search is temporarily unavailable", domain }, 503);
   const quote = await getDomainQuote(c.env as any, domain);
