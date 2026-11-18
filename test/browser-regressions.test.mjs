@@ -201,6 +201,17 @@ test("shell links badger brand assets and manifest", async () => {
   assert.match(html, /og:image/);
 });
 
+test("fonts are self-hosted and preloaded, no third-party font requests", async () => {
+  const res = await worker.fetch(new Request("http://localhost/"), {});
+  const html = await res.text();
+  assert.doesNotMatch(html, /fonts\.googleapis\.com/);
+  assert.doesNotMatch(html, /fonts\.gstatic\.com/);
+  assert.match(html, /rel="preload"[^>]*bricolage-grotesque-latin\.woff2/);
+  assert.match(html, /rel="preload"[^>]*geist-latin\.woff2/);
+  // Static-asset serving is verified against the deployed worker, not the
+  // unit-test harness (which has no asset pipeline): see live check notes.
+});
+
 test("site manifest names namenice with installable icons", async () => {
   const res = await worker.fetch(new Request("http://localhost/site.webmanifest"), {});
   assert.equal(res.status, 200);
@@ -214,6 +225,43 @@ test("exact-match domain name stays compact and wraps gracefully", () => {
   const css = readFileSync(new URL("../public/assets/css/search-results.css", import.meta.url), "utf8");
   assert.match(css, /\.srch-exact__domain\s*\{[^}]*font-size\s*:\s*32px[^}]*overflow-wrap\s*:\s*break-word/s);
   assert.match(css, /@media\s*\(max-width:\s*720px\)\s*\{[^}]*\.srch-exact__domain\s*\{[^}]*font-size\s*:\s*26px/s);
+});
+
+test("search page inline module ships syntactically valid JavaScript", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("api.dynadot.com")) {
+      return new Response(JSON.stringify({ data:{ available:"yes", premium:"no", price:"3.44" } }), { status:200, headers:{ "content-type":"application/json" } });
+    }
+    if (String(url).includes("rdap.org")) return new Response("blocked", { status:403 });
+    if (String(url).includes("rdap.verisign.com")) return new Response("", { status:404 });
+    return originalFetch(url);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const response = await worker.fetch(new Request("http://localhost/search?q=filterheartcheck"), {
+    DYNADOT_API_KEY:"prod_test_key",
+    DYNADOT_API_SECRET:"prod_test_secret",
+  });
+  const html = await response.text();
+  const modules = [...html.matchAll(/<script type="module">(.*?)<\/script>/gs)].map((m) => m[1]);
+  assert.ok(modules.length > 0, "search page has an inline module");
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, mkdtempSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "namenice-inline-"));
+  for (const [i, src] of modules.entries()) {
+    const file = join(dir, `search-inline-${i}.mjs`);
+    writeFileSync(file, src);
+    execFileSync(process.execPath, ["--check", file], { stdio:"pipe" });
+  }
+});
+
+test("favorited heart renders filled bright red", () => {
+  const css = readFileSync(new URL("../public/assets/css/search-results.css", import.meta.url), "utf8");
+  assert.match(css, /\.compare-table__favorite\[aria-pressed="true"\]\s*\{[^}]*color\s*:\s*#F5222D/s);
+  assert.match(css, /\.compare-table__favorite\[aria-pressed="true"\]\s+svg\s*\{[^}]*fill\s*:\s*currentColor/s);
 });
 
 test("invalid search shows Dig with guidance", async () => {

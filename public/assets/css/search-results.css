@@ -15,7 +15,8 @@
 /* (compare-table layout and trust-row removed — dead styles; favorite heart kept) */
 .compare-table__favorite { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-control); background: transparent; padding: 0; color: var(--color-text-secondary); flex-shrink: 0; transition: border-color .15s ease, background-color .15s ease; }
 .compare-table__favorite:hover { border-color: var(--color-interaction); color: var(--color-text-primary); }
-.compare-table__favorite[aria-pressed="true"] { color: var(--color-brand-expression); border-color: var(--color-text-primary); }
+.compare-table__favorite[aria-pressed="true"] { color: #F5222D; border-color: #F5222D; }
+.compare-table__favorite[aria-pressed="true"] svg { fill: currentColor; }
 
 .taken-domain { display: flex; flex-direction: column; gap: var(--space-2); }
 .taken-domain__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }

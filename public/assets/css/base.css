@@ -1,3 +1,19 @@
+/* Self-hosted variable fonts (SIL OFL: Bricolage Grotesque, Geist), latin subset.
+   Same-origin + preload so the hero never swaps sizes after first paint. */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url("/assets/fonts/bricolage-grotesque-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/assets/fonts/geist-latin.woff2") format("woff2");
+}
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; }
 body { margin: 0; background: var(--color-surface-primary); color: var(--color-text-primary); font-family: var(--font-ui); }
