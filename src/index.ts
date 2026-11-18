@@ -9,7 +9,7 @@ import { dispatchWebhooks } from "./webhooks.ts";
 import { authenticateApiKey } from "./api-keys.ts";
 import { fulfillPaidDomain } from "./fulfillment.ts";
 import { renewRegisteredDomain } from "./renewal.ts";
-import { getDomainQuote } from "./availability.ts";
+import { getDomainQuote, getTransferPrice } from "./availability.ts";
 
 
 function esc(s: string): string {
@@ -978,7 +978,7 @@ app.get("/transfer", async (c) => {
         <form method="post" action="/domains/transfer/in?org=${orgId}" style="display:grid;gap:var(--space-4);max-width:480px;">
           <div><label class="field-label">Domain to transfer</label><input class="field" name="domain" placeholder="example.com" required /></div>
           <div><label class="field-label">Authorization code (EPP)</label><input class="field" name="auth_code" placeholder="Enter code from current registrar" required /></div>
-          <p class="taken-domain__dates">Unlock the Domain at your current registrar before starting.</p>
+          <p class="taken-domain__dates">Unlock the Domain at your current registrar before starting. Any extension Dynadot supports can be transferred — price varies by extension and includes a 1-year renewal.</p>
           <button class="button button--primary" type="submit">Start transfer →</button>
         </form>
       </section>
@@ -1628,7 +1628,9 @@ app.post("/domains/transfer/in", async (c) => {
   const auth = String(form.get("auth_code")||"").trim();
   if (!domain || !auth) return c.text("domain + auth_code required",400);
   if (!dynadotConfigured(c.env as any)) return c.text("Dynadot not configured", 503);
-  const amountCents = 1499;
+  const priced = await getTransferPrice(c.env as any, domain);
+  if (!priced.ok) return c.text(priced.error, 502);
+  const amountCents = priced.price.amountCents;
   const charge = await debitBalance(c.env as any, orgId, member.accountId, amountCents, { idempotencyKey:`transfer:${orgId}:${domain}`, description:`Transfer ${domain}`, domain });
   if (!charge.ok) return c.text(charge.error || "Insufficient Organization Balance", 402);
   const transfer = await transferDomainIn(c.env as any, domain, { authCode: auth, duration: 1, privacy: "full" });
@@ -1638,7 +1640,7 @@ app.post("/domains/transfer/in", async (c) => {
   }
   await c.env.DB.prepare("INSERT OR IGNORE INTO domains (org_id, domain, status, privacy, created_at) VALUES (?, ?, 'pending_transfer', 1, ?)").bind(orgId, domain, Math.floor(Date.now()/1000)).run();
   try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(c.env as any, orgId, { action:"domain.transfer.in", target:`${domain} auth:${auth.slice(0,4)}***`, actor: member.email }); } catch {}
-  return c.html(shell("Transfer started", `<div class=card><p>Transfer for <b>${esc(domain)}</b> initiated. Check email at the losing registrar to approve.</p><a href="/domains?org=${orgId}">← Domains</a></div>`));
+  return c.html(shell("Transfer started", `<div class=card><p>Transfer for <b>${esc(domain)}</b> initiated — ${centsToPrice(amountCents)} debited from Organization Balance. Check email at the losing registrar to approve.</p><a href="/domains?org=${orgId}">← Domains</a></div>`));
 });
 app.post("/domains/transfer/out", async (c) => {
   const _uTo = await getSessionUser(c);

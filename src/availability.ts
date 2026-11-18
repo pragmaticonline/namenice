@@ -1,4 +1,4 @@
-import { searchDomain, type DynadotResult } from "./dynadot.ts";
+import { getTldPrice, searchDomain, type DynadotResult } from "./dynadot.ts";
 
 type AvailabilityEnv = { DYNADOT_API_KEY?:string; DYNADOT_API_SECRET?:string; DYNADOT_SANDBOX?:string };
 export type DomainQuote = { domain:string; available:boolean; premium:boolean; amountCents:number|null };
@@ -65,4 +65,22 @@ export async function getDomainQuote(env:AvailabilityEnv, domain:string):Promise
     } catch { return { ok:false, error:"Could not independently verify Domain availability" }; }
   }
   return { ok:true, quote:{ domain:normalized, available, premium:available && premium, amountCents:available ? moneyToCents(price) : null } };
+}
+
+export type TransferPrice = { tld:string; amountCents:number };
+
+/* Live transfer price for any extension Dynadot lists (longest TLD match wins,
+   so multi-level extensions resolve correctly). Amount includes the $1 handling. */
+export async function getTransferPrice(env:AvailabilityEnv, domain:string): Promise<{ok:true;price:TransferPrice}|{ok:false;error:string}> {
+  const normalized = domain.toLowerCase().trim();
+  if (!normalized.includes(".")) return { ok:false, error:"Enter a valid domain name" };
+  const result:DynadotResult<any> = await getTldPrice(env, "", "USD");
+  if (!result.ok || !result.data) return { ok:false, error:result.error || "Registrar price lookup failed" };
+  const list:any[] = result.data?.tld_price_list || result.data?.tldPriceList || [];
+  const match = list
+    .filter((row) => typeof row?.tld === "string" && normalized.endsWith(String(row.tld).toLowerCase()))
+    .sort((a, b) => String(b.tld).length - String(a.tld).length)[0];
+  const amountCents = moneyToCents(match?.transfer_price ?? match?.transferPrice);
+  if (!match || amountCents == null) return { ok:false, error:"Transfers are not available for this extension" };
+  return { ok:true, price:{ tld:String(match.tld), amountCents } };
 }

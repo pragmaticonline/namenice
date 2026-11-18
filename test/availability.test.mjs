@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getDomainQuote } from "../src/availability.ts";
+import { getDomainQuote, getTransferPrice } from "../src/availability.ts";
 
 // Shapes mirror the real Dynadot production search response (see /tmp probe
 // 2026-11-17): prices come back in the account's currency with a currency tag.
@@ -26,4 +26,31 @@ test("domain quotes request USD so Thai-account prices are not shown as dollars"
   assert.equal(result.ok, true);
   assert.match(requests.find((u) => u.includes("api.dynadot.com")), /currency=USD/);
   assert.deepEqual(result.quote, { domain:"foobar2234.com", available:true, premium:false, amountCents:1262 });
+});
+
+test("transfer price uses the live per-extension Dynadot rate in USD", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  const TLD_PRICES = { code:200, message:"Success", data:{ currency:"USD", tld_price_list:[
+    { tld:".com", transfer_price:"11.62" },
+    { tld:".io", transfer_price:"53.50" },
+    { tld:".co.uk", transfer_price:"9.99" },
+    { tld:".uk", transfer_price:"8.99" },
+  ] } };
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return new Response(JSON.stringify(TLD_PRICES), { status: 200 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const env = { DYNADOT_API_KEY:"prod_key", DYNADOT_API_SECRET:"prod_secret" };
+
+  assert.deepEqual(await getTransferPrice(env, "example.io"), { ok:true, price:{ tld:".io", amountCents:5450 } });
+  assert.deepEqual(await getTransferPrice(env, "example.COM"), { ok:true, price:{ tld:".com", amountCents:1262 } });
+  // longest TLD match wins for multi-level extensions
+  assert.deepEqual(await getTransferPrice(env, "example.co.uk"), { ok:true, price:{ tld:".co.uk", amountCents:1099 } });
+
+  const unknown = await getTransferPrice(env, "example.invalidtld");
+  assert.equal(unknown.ok, false);
+
+  assert.match(requests.find((u) => u.includes("get_tld_price")), /currency=USD/);
 });
