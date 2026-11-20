@@ -152,6 +152,14 @@ test("cart copy does not promise a fixed price before server revalidation", asyn
   assert.match(html, /price.*rechecked/i);
 });
 
+test("homepage .com example matches live registrar-plus-fee pricing", async () => {
+  const response = await worker.fetch(new Request("http://localhost/"), {});
+  const html = await response.text();
+  // Live Dynadot .com is $11.62 + $1 handling = $12.62; the stale $14.99 must go.
+  assert.doesNotMatch(html, /\$14\.99/);
+  assert.match(html, /\$12\.62/);
+});
+
 test("SPA bundles and SSR HTML never ship demo login copy", async () => {
   const { readdirSync, readFileSync } = await import("node:fs");
   const { join } = await import("node:path");

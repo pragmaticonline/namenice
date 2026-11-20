@@ -9,7 +9,7 @@ import { dispatchWebhooks } from "./webhooks.ts";
 import { authenticateApiKey } from "./api-keys.ts";
 import { fulfillPaidDomain } from "./fulfillment.ts";
 import { renewRegisteredDomain } from "./renewal.ts";
-import { getDomainQuote, getTransferPrice } from "./availability.ts";
+import { getDomainQuote, getRenewalPrice, getTransferPrice } from "./availability.ts";
 import { countryOptions, defaultCountryCode, fetchSavedAddresses, isCountryCode, savedAddressOptions, savedAddressesJson } from "./countries.ts";
 import { dialCodeFor, phoneCcOptions } from "./dial-codes.ts";
 
@@ -451,7 +451,7 @@ app.get("/", async (c) => {
       <div class="home-band">
         <div class="home-band__copy"><h2>One honest price.</h2><p>.com registers and renews at the same price. No teaser rates, no hidden add-ons, privacy included.</p></div>
         <div class="home-band__card"><p class="home-band__card-name">yourname.com</p>
-          <div class="home-band__prices"><div><p>First year</p><strong>$14.99</strong></div><div><p>Renews at</p><strong>$14.99</strong></div></div>
+          <div class="home-band__prices"><div><p>First year</p><strong>$12.62</strong></div><div><p>Renews at</p><strong>$12.62</strong></div></div>
           <a class="home-band__cta" href="/search">Check your name →</a>
         </div>
       </div>
@@ -871,13 +871,18 @@ app.get("/orders", async (c) => {
   const ledgerRows: any[] = ledger.results || [];
   const fmtDate = (sec:any) => sec ? new Date(Number(sec)*1000).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric"}) : "—";
   const fmtMoney = (cents:any) => (Number(cents)/100).toFixed(2);
+  const paidByDomain = new Map<string, number>();
+  for (const l of ledgerRows) {
+    const key = String((l as any).domain || "");
+    if (key && !paidByDomain.has(key)) paidByDomain.set(key, Math.abs(Number((l as any).amount_cents))/100 || 0);
+  }
   const ordersData = domainsRows.map((r:any, i:number) => ({
     id: `NN-${String(1000 + i).padStart(4,"0")}`,
     domain: r.domain,
     type: "domain",
     typeLabel: "Domain registration",
     at: Number(r.created_at)*1000 || Date.now(),
-    total: 14.99,
+    total: paidByDomain.get(r.domain) ?? null,
     status: r.status === "active" ? "Paid" : r.status,
     raw: r
   }));
@@ -918,7 +923,7 @@ app.get("/orders", async (c) => {
       const rowsEl = document.getElementById("orders-rows");
       if(rowsEl){
         if(pageItems.length===0) rowsEl.innerHTML = '<p class="taken-domain__dates" style="padding: var(--space-6) 0;">No orders in this category.</p>';
-        else rowsEl.innerHTML = pageItems.map(o=> '<div class="orders-table__row'+(selectedId===o.id?' is-selected':'')+'"><span class="orders-table__id">#'+o.id+'</span><span><strong>'+o.domain+'</strong><span class="orders-table__item-meta">'+o.typeLabel+' · 1 year</span></span><span>'+fmtDate(o.at)+'</span><span><span class="status-badge status-badge--available">\u25cf '+o.status+'</span></span><span class="orders-table__total">$'+Number(o.total).toFixed(2)+'</span><button type="button" class="text-action" data-view-order="'+o.id+'">View details →</button></div>').join("");
+        else rowsEl.innerHTML = pageItems.map(o=> '<div class="orders-table__row'+(selectedId===o.id?' is-selected':'')+'"><span class="orders-table__id">#'+o.id+'</span><span><strong>'+o.domain+'</strong><span class="orders-table__item-meta">'+o.typeLabel+' · 1 year</span></span><span>'+fmtDate(o.at)+'</span><span><span class="status-badge status-badge--available">\u25cf '+o.status+'</span></span><span class="orders-table__total">'+(o.total==null?'—':'$'+Number(o.total).toFixed(2))+'</span><button type="button" class="text-action" data-view-order="'+o.id+'">View details →</button></div>').join("");
         rowsEl.querySelectorAll("[data-view-order]").forEach(b=> b.addEventListener("click", ()=>{ selectedId = b.getAttribute("data-view-order"); render(); }));
       }
       const pagEl = document.getElementById("orders-pagination");
@@ -941,7 +946,7 @@ app.get("/orders", async (c) => {
       const slot = document.getElementById("orders-detail-slot");
       if(slot){
         if(!selected) slot.innerHTML = "";
-        else slot.innerHTML = '<div class="orders-detail"><div class="orders-detail__header"><h3 style="margin:0;">Order '+selected.id+'</h3><button type="button" class="orders-detail__close" id="orders-detail-close">✕</button></div><div class="orders-detail__status"><span class="orders-detail__check">✓</span> '+selected.status+' · '+fmtDate(selected.at)+'</div><div class="orders-detail__line"><span>'+selected.typeLabel+'</span><strong>'+selected.domain+'</strong></div><div class="orders-detail__line"><span>Date</span><span>'+fmtDate(selected.at)+'</span></div><div class="orders-detail__line"><span>Amount</span><span>$'+Number(selected.total).toFixed(2)+'</span></div><div class="orders-detail__total"><span>Total</span><strong>$'+Number(selected.total).toFixed(2)+'</strong></div><div style="margin-top:var(--space-5);"><a href="/domains?org=${orgId}" class="button button--secondary" style="width:100%; justify-content:center;">View domains</a></div></div>';
+        else slot.innerHTML = '<div class="orders-detail"><div class="orders-detail__header"><h3 style="margin:0;">Order '+selected.id+'</h3><button type="button" class="orders-detail__close" id="orders-detail-close">✕</button></div><div class="orders-detail__status"><span class="orders-detail__check">✓</span> '+selected.status+' · '+fmtDate(selected.at)+'</div><div class="orders-detail__line"><span>'+selected.typeLabel+'</span><strong>'+selected.domain+'</strong></div><div class="orders-detail__line"><span>Date</span><span>'+fmtDate(selected.at)+'</span></div><div class="orders-detail__line"><span>Amount</span><span>'+(selected.total==null?'—':'$'+Number(selected.total).toFixed(2))+'</span></div><div class="orders-detail__total"><span>Total</span><strong>'+(selected.total==null?'—':'$'+Number(selected.total).toFixed(2))+'</strong></div><div style="margin-top:var(--space-5);"><a href="/domains?org=${orgId}" class="button button--secondary" style="width:100%; justify-content:center;">View domains</a></div></div>';
         const c = document.getElementById("orders-detail-close");
         if(c) c.addEventListener("click", ()=>{ selectedId=null; render(); });
       }
@@ -1647,9 +1652,11 @@ app.post("/domains/renew", async (c) => {
   const form = await c.req.formData();
   const domain = String(form.get("domain")||"").toLowerCase().trim();
   const payFromBalance = String(form.get("pay_from_balance")||"") === "1";
-  const amountCents = 1499;
+  if (!dynadotConfigured(c.env as any)) return c.text("Dynadot not configured", 503);
+  const priced = await getRenewalPrice(c.env as any, domain);
+  if (!priced.ok) return c.text(priced.error, 502);
+  const amountCents = priced.price.amountCents;
   if (payFromBalance) {
-    if (!dynadotConfigured(c.env as any)) return c.text("Dynadot not configured", 503);
     const owned = await c.env.DB.prepare("SELECT expires_at FROM domains WHERE org_id=? AND domain=?").bind(orgId, domain).first().catch(()=>null) as any;
     if (!owned) return c.text("Domain not found", 404);
     const expiration = new Date(Number(owned.expires_at || Math.floor(Date.now()/1000)) * 1000);
@@ -1677,7 +1684,10 @@ app.post("/domains/renew-stripe", async (c) => {
   if (!stripeConfigured(c.env as any)) return c.text("Stripe not configured", 503);
   const form = await c.req.formData();
   const domain = String(form.get("domain")||"").toLowerCase().trim();
-  const amountCents = 1499;
+  if (!dynadotConfigured(c.env as any)) return c.text("Dynadot not configured", 503);
+  const priced = await getRenewalPrice(c.env as any, domain);
+  if (!priced.ok) return c.text(priced.error, 502);
+  const amountCents = priced.price.amountCents;
   const origin = new URL(c.req.url).origin;
   const balRow = await c.env.DB.prepare("SELECT stripe_customer_id FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null);
   const session = await createRenewalCheckoutSession(c.env as any, { orgId, accountId: member.accountId, email: member.email, customerId: (balRow as any)?.stripe_customer_id||null, domain, amountCents, successUrl: `${origin}/domains?org=${orgId}`, cancelUrl: `${origin}/domains?org=${orgId}` });
@@ -1738,7 +1748,10 @@ app.post("/domains/bulk/renew", async (c) => {
   const list = String(form.get("domains")||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
   let ok=0, fail=0;
   for (const dom of list) {
-    const r = await (await import("./balance.ts")).debitBalance(c.env as any, orgId, member.accountId, 1499, { idempotencyKey:`bulk:renew:${orgId}:${dom}:${Math.floor(Date.now()/86400000)}`, description:`Bulk renew ${dom}`, domain: dom });
+    const priced = await getRenewalPrice(c.env as any, dom);
+    if (!priced.ok) { fail++; continue; }
+    const priceCents = priced.price.amountCents;
+    const r = await (await import("./balance.ts")).debitBalance(c.env as any, orgId, member.accountId, priceCents, { idempotencyKey:`bulk:renew:${orgId}:${dom}:${Math.floor(Date.now()/86400000)}`, description:`Bulk renew ${dom}`, domain: dom });
     if (!r.ok) { fail++; continue; }
     const renewal = await renewRegisteredDomain(c.env as any, orgId, dom);
     if (renewal.ok) {
@@ -1746,7 +1759,7 @@ app.post("/domains/bulk/renew", async (c) => {
       queueWebhook(c, orgId, "domain.renewed", {domain:dom,duration:1,payment:"balance"});
     } else {
       fail++;
-      await creditTopup(c.env as any, orgId, 1499, `refund:bulk-renew:${dom}:${Math.floor(Date.now()/86400000)}`, `refund:bulk-renew:${orgId}:${dom}:${Math.floor(Date.now()/86400000)}`, String(member.accountId)).catch(()=>{});
+      await creditTopup(c.env as any, orgId, priceCents, `refund:bulk-renew:${dom}:${Math.floor(Date.now()/86400000)}`, `refund:bulk-renew:${orgId}:${dom}:${Math.floor(Date.now()/86400000)}`, String(member.accountId)).catch(()=>{});
     }
   }
   return c.html(shell("Bulk renew", `<div class=card><p>Renewed ${ok} domains, ${fail} failed (insufficient balance).</p><a href="/domains?org=${orgId}">← Domains</a></div>`));
@@ -1983,7 +1996,12 @@ export default {
     for (const d of (due.results||[])) {
       const orgId = (d as any).org_id as number;
       const domain = (d as any).domain as string;
-      const amountCents = 1499;
+      const priced = await getRenewalPrice(env as any, domain);
+      if (!priced.ok) {
+        try { const { recordAuditEvent } = await import("./metrics.ts"); recordAuditEvent(env as any, orgId, { action:"domain.renew.cron.failed", target:`${domain}: ${priced.error}`, actor:"cron" }); } catch {}
+        continue;
+      }
+      const amountCents = priced.price.amountCents;
       // try balance first
       const bal = await env.DB.prepare("SELECT balance_cents FROM org_balances WHERE org_id=?").bind(orgId).first().catch(()=>null) as any;
       if (bal && bal.balance_cents >= amountCents) {

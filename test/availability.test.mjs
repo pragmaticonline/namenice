@@ -54,3 +54,32 @@ test("transfer price uses the live per-extension Dynadot rate in USD", async (t)
 
   assert.match(requests.find((u) => u.includes("get_tld_price")), /currency=USD/);
 });
+
+test("renewal price uses the live per-extension Dynadot renewal rate in USD", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  const TLD_PRICES = { code:200, message:"Success", data:{ currency:"USD", tld_price_list:[
+    { tld:".com", registration_price:"11.62", renewal_price:"11.62" },
+    { tld:".io", registration_price:"32.00", renewal_price:"35.00" },
+    { tld:".co.uk", registration_price:"9.99", renewal_price:"10.99" },
+    { tld:".uk", registration_price:"8.99", renewal_price:"9.49" },
+  ] } };
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return new Response(JSON.stringify(TLD_PRICES), { status: 200 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const env = { DYNADOT_API_KEY:"prod_key", DYNADOT_API_SECRET:"prod_secret" };
+
+  const { getRenewalPrice } = await import("../src/availability.ts");
+  // renewal (not registration) rate plus the $1 handling fee
+  assert.deepEqual(await getRenewalPrice(env, "example.io"), { ok:true, price:{ tld:".io", amountCents:3600 } });
+  assert.deepEqual(await getRenewalPrice(env, "example.COM"), { ok:true, price:{ tld:".com", amountCents:1262 } });
+  // longest TLD match wins for multi-level extensions
+  assert.deepEqual(await getRenewalPrice(env, "example.co.uk"), { ok:true, price:{ tld:".co.uk", amountCents:1199 } });
+
+  const unknown = await getRenewalPrice(env, "example.invalidtld");
+  assert.equal(unknown.ok, false);
+
+  assert.match(requests.find((u) => u.includes("get_tld_price")), /currency=USD/);
+});

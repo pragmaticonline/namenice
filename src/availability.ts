@@ -84,3 +84,21 @@ export async function getTransferPrice(env:AvailabilityEnv, domain:string): Prom
   if (!match || amountCents == null) return { ok:false, error:"Transfers are not available for this extension" };
   return { ok:true, price:{ tld:String(match.tld), amountCents } };
 }
+
+export type RenewalPrice = { tld:string; amountCents:number };
+
+/* Live renewal price for any extension Dynadot lists (longest TLD match wins).
+   Reads the renewal rate — not the registration rate — and includes the $1 handling. */
+export async function getRenewalPrice(env:AvailabilityEnv, domain:string): Promise<{ok:true;price:RenewalPrice}|{ok:false;error:string}> {
+  const normalized = domain.toLowerCase().trim();
+  if (!normalized.includes(".")) return { ok:false, error:"Enter a valid domain name" };
+  const result:DynadotResult<any> = await getTldPrice(env, "", "USD");
+  if (!result.ok || !result.data) return { ok:false, error:result.error || "Registrar price lookup failed" };
+  const list:any[] = result.data?.tld_price_list || result.data?.tldPriceList || [];
+  const match = list
+    .filter((row) => typeof row?.tld === "string" && normalized.endsWith(String(row.tld).toLowerCase()))
+    .sort((a, b) => String(b.tld).length - String(a.tld).length)[0];
+  const amountCents = moneyToCents(match?.renewal_price ?? match?.renewalPrice ?? match?.registration_price ?? match?.registrationPrice);
+  if (!match || amountCents == null) return { ok:false, error:"Renewals are not available for this extension" };
+  return { ok:true, price:{ tld:String(match.tld), amountCents } };
+}

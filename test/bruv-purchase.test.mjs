@@ -8,9 +8,11 @@ const dynadotSrc = readFileSync(new URL("../src/dynadot.ts", import.meta.url), "
 const stripeSrc = readFileSync(new URL("../src/stripe.ts", import.meta.url), "utf8");
 const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
 
-test("money: buy debits $14.99 + $2 fee via atomic balance first, Stripe fallback", () => {
+test("money: buy debits the live registrar-plus-fee quote via atomic balance first, Stripe fallback", () => {
   assert.match(indexSrc, /app\.post\(.*\/domains\/buy/, "buy endpoint exists");
-  assert.match(indexSrc, /1499|14\.99/, "buy amount $14.99 base");
+  assert.match(indexSrc, /getDomainQuote/, "buy prices from the live registrar quote, not a hardcoded base");
+  assert.match(indexSrc, /quote\.amountCents \* duration|amountCents = quoteResult\.quote\.amountCents/, "buy charges the quoted amount");
+  assert.doesNotMatch(indexSrc, /1499|14\.99/, "no stale hardcoded price remains");
   assert.match(indexSrc, /debitBalance/, "buy uses debitBalance first");
   assert.match(indexSrc, /pay_from_balance|payFromBalance/, "buy has balance toggle");
   assert.match(balanceSrc, /UPDATE org_balances SET balance_cents = balance_cents -/);
@@ -32,9 +34,9 @@ test("money: buy refund on Dynadot failure via creditTopup", () => {
   assert.match(indexSrc, /Dynadot failed.*refund/i);
 });
 
-test("money: renew 1y $14.99 from balance or Stripe checkout", () => {
+test("money: renew 1y at the live renewal rate from balance or Stripe checkout", () => {
   assert.match(indexSrc, /app\.post\(.*\/domains\/renew/);
-  assert.match(indexSrc, /renew.*1499|1499.*renew/i);
+  assert.match(indexSrc, /getRenewalPrice/, "renew prices from the live renewal rate, not a hardcoded base");
   assert.match(indexSrc, /debitBalance.*Renew/);
   assert.match(indexSrc, /app\.post\(.*\/domains\/renew-stripe/);
   assert.match(stripeSrc, /createDomainCheckoutWithBalanceFallback/);
@@ -82,7 +84,7 @@ test("money: only owner billed via Stripe customer on org", () => {
   assert.match(indexSrc, /can\(member\.role.*billing\.manage/);
 });
 
-test("money: amount limits $5–$1000 top-up, $14.99 domain", () => {
+test("money: amount limits $5–$1000 top-up", () => {
   assert.match(stripeSrc, /500/);
   assert.match(stripeSrc, /100000/);
   assert.match(indexSrc, /Minimum top-up|Maximum single top-up/);
